@@ -1,0 +1,53 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Data files (CSV, Excel, JSON, GeoJSON, Shapefiles, etc.)
+*.tsv
+*.xls
+*.xlsx
+*.json
+*.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+*.xml
+
+# Images and visualization outputs
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+
+# Environment files
+.env
+.venv/
+venv/
+env/
+*.env
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# VSCode / IDE settings
+.vscode/
+.idea/
+
+# Cache
+.cache/
