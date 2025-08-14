@@ -1,0 +1,237 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>강원도 산불 — 연도별 동원 인력(막대) & 지원지표(라인)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", Arial, sans-serif; margin: 0; padding: 16px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    padding: 10px 12px 6px 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  }
+  .title { font-weight: 600; margin: 4px 0 8px 2px; font-size: 14px; color: #333; }
+  .axis path, .axis line { stroke: #ccc; }
+  .bar { fill: #90caf9; }
+  .legend {
+    font-size: 12px;
+    fill: #333;
+  }
+  .legend rect {
+    rx: 6; ry: 6;
+    fill: rgba(255,255,255,0.85);
+    stroke: #ddd;
+  }
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+  <h2 style="margin: 0 0 12px 0;">강원도 산불 — 월별 동원 인력(막대) & 지원지표(라인)</h2>
+  <div id="chart" class="grid"></div>
+  <div id="tooltip" class="tooltip" style="opacity:0;"></div>
+
+<script>
+const raw = [{"year": 2016, "month": 1, "date_str": "2016-01-01", "whol_mnpw_cnt": 1690, "mblz_policeo_cnt": 127, "mblz_sold_cnt": 146, "mblz_gnrl_ocpt_nope": 299, "etc_mblz_nope": 103, "mblz_ffpwr_cnt": 359}, {"year": 2016, "month": 2, "date_str": "2016-02-01", "whol_mnpw_cnt": 2801, "mblz_policeo_cnt": 162, "mblz_sold_cnt": 506, "mblz_gnrl_ocpt_nope": 823, "etc_mblz_nope": 84, "mblz_ffpwr_cnt": 252}, {"year": 2016, "month": 3, "date_str": "2016-03-01", "whol_mnpw_cnt": 2369, "mblz_policeo_cnt": 102, "mblz_sold_cnt": 568, "mblz_gnrl_ocpt_nope": 582, "etc_mblz_nope": 117, "mblz_ffpwr_cnt": 262}, {"year": 2016, "month": 4, "date_str": "2016-04-01", "whol_mnpw_cnt": 3709, "mblz_policeo_cnt": 212, "mblz_sold_cnt": 475, "mblz_gnrl_ocpt_nope": 989, "etc_mblz_nope": 375, "mblz_ffpwr_cnt": 279}, {"year": 2016, "month": 5, "date_str": "2016-05-01", "whol_mnpw_cnt": 1218, "mblz_policeo_cnt": 51, "mblz_sold_cnt": 50, "mblz_gnrl_ocpt_nope": 276, "etc_mblz_nope": 95, "mblz_ffpwr_cnt": 180}, {"year": 2016, "month": 6, "date_str": "2016-06-01", "whol_mnpw_cnt": 712, "mblz_policeo_cnt": 34, "mblz_sold_cnt": 130, "mblz_gnrl_ocpt_nope": 175, "etc_mblz_nope": 62, "mblz_ffpwr_cnt": 97}, {"year": 2016, "month": 8, "date_str": "2016-08-01", "whol_mnpw_cnt": 110, "mblz_policeo_cnt": 2, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 56, "etc_mblz_nope": 3, "mblz_ffpwr_cnt": 29}, {"year": 2016, "month": 9, "date_str": "2016-09-01", "whol_mnpw_cnt": 52, "mblz_policeo_cnt": 0, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 10, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 12}, {"year": 2016, "month": 10, "date_str": "2016-10-01", "whol_mnpw_cnt": 11, "mblz_policeo_cnt": 0, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 0, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 11}, {"year": 2016, "month": 11, "date_str": "2016-11-01", "whol_mnpw_cnt": 433, "mblz_policeo_cnt": 46, "mblz_sold_cnt": 33, "mblz_gnrl_ocpt_nope": 86, "etc_mblz_nope": 67, "mblz_ffpwr_cnt": 44}, {"year": 2017, "month": 1, "date_str": "2017-01-01", "whol_mnpw_cnt": 502, "mblz_policeo_cnt": 28, "mblz_sold_cnt": 15, "mblz_gnrl_ocpt_nope": 66, "etc_mblz_nope": 70, "mblz_ffpwr_cnt": 71}, {"year": 2017, "month": 2, "date_str": "2017-02-01", "whol_mnpw_cnt": 397, "mblz_policeo_cnt": 25, "mblz_sold_cnt": 5, "mblz_gnrl_ocpt_nope": 73, "etc_mblz_nope": 34, "mblz_ffpwr_cnt": 70}, {"year": 2017, "month": 3, "date_str": "2017-03-01", "whol_mnpw_cnt": 5753, "mblz_policeo_cnt": 229, "mblz_sold_cnt": 548, "mblz_gnrl_ocpt_nope": 2012, "etc_mblz_nope": 479, "mblz_ffpwr_cnt": 633}, {"year": 2017, "month": 4, "date_str": "2017-04-01", "whol_mnpw_cnt": 1820, "mblz_policeo_cnt": 103, "mblz_sold_cnt": 84, "mblz_gnrl_ocpt_nope": 318, "etc_mblz_nope": 227, "mblz_ffpwr_cnt": 261}, {"year": 2017, "month": 5, "date_str": "2017-05-01", "whol_mnpw_cnt": 7158, "mblz_policeo_cnt": 540, "mblz_sold_cnt": 707, "mblz_gnrl_ocpt_nope": 1936, "etc_mblz_nope": 614, "mblz_ffpwr_cnt": 721}, {"year": 2017, "month": 6, "date_str": "2017-06-01", "whol_mnpw_cnt": 1032, "mblz_policeo_cnt": 85, "mblz_sold_cnt": 35, "mblz_gnrl_ocpt_nope": 225, "etc_mblz_nope": 94, "mblz_ffpwr_cnt": 166}, {"year": 2017, "month": 11, "date_str": "2017-11-01", "whol_mnpw_cnt": 731, "mblz_policeo_cnt": 63, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 170, "etc_mblz_nope": 35, "mblz_ffpwr_cnt": 128}, {"year": 2017, "month": 12, "date_str": "2017-12-01", "whol_mnpw_cnt": 477, "mblz_policeo_cnt": 31, "mblz_sold_cnt": 5, "mblz_gnrl_ocpt_nope": 198, "etc_mblz_nope": 10, "mblz_ffpwr_cnt": 81}, {"year": 2018, "month": 1, "date_str": "2018-01-01", "whol_mnpw_cnt": 1455, "mblz_policeo_cnt": 47, "mblz_sold_cnt": 390, "mblz_gnrl_ocpt_nope": 540, "etc_mblz_nope": 10, "mblz_ffpwr_cnt": 96}, {"year": 2018, "month": 2, "date_str": "2018-02-01", "whol_mnpw_cnt": 1378, "mblz_policeo_cnt": 55, "mblz_sold_cnt": 102, "mblz_gnrl_ocpt_nope": 216, "etc_mblz_nope": 199, "mblz_ffpwr_cnt": 233}, {"year": 2018, "month": 3, "date_str": "2018-03-01", "whol_mnpw_cnt": 7552, "mblz_policeo_cnt": 301, "mblz_sold_cnt": 4638, "mblz_gnrl_ocpt_nope": 961, "etc_mblz_nope": 220, "mblz_ffpwr_cnt": 659}, {"year": 2018, "month": 4, "date_str": "2018-04-01", "whol_mnpw_cnt": 2330, "mblz_policeo_cnt": 143, "mblz_sold_cnt": 175, "mblz_gnrl_ocpt_nope": 548, "etc_mblz_nope": 231, "mblz_ffpwr_cnt": 356}, {"year": 2018, "month": 6, "date_str": "2018-06-01", "whol_mnpw_cnt": 782, "mblz_policeo_cnt": 29, "mblz_sold_cnt": 153, "mblz_gnrl_ocpt_nope": 128, "etc_mblz_nope": 43, "mblz_ffpwr_cnt": 155}, {"year": 2018, "month": 7, "date_str": "2018-07-01", "whol_mnpw_cnt": 164, "mblz_policeo_cnt": 12, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 37, "etc_mblz_nope": 6, "mblz_ffpwr_cnt": 46}, {"year": 2018, "month": 8, "date_str": "2018-08-01", "whol_mnpw_cnt": 738, "mblz_policeo_cnt": 44, "mblz_sold_cnt": 5, "mblz_gnrl_ocpt_nope": 216, "etc_mblz_nope": 11, "mblz_ffpwr_cnt": 142}, {"year": 2018, "month": 10, "date_str": "2018-10-01", "whol_mnpw_cnt": 115, "mblz_policeo_cnt": 10, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 31, "etc_mblz_nope": 25, "mblz_ffpwr_cnt": 34}, {"year": 2018, "month": 11, "date_str": "2018-11-01", "whol_mnpw_cnt": 589, "mblz_policeo_cnt": 28, "mblz_sold_cnt": 220, "mblz_gnrl_ocpt_nope": 58, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 93}, {"year": 2018, "month": 12, "date_str": "2018-12-01", "whol_mnpw_cnt": 216, "mblz_policeo_cnt": 13, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 61, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 74}, {"year": 2019, "month": 1, "date_str": "2019-01-01", "whol_mnpw_cnt": 3660, "mblz_policeo_cnt": 289, "mblz_sold_cnt": 871, "mblz_gnrl_ocpt_nope": 609, "etc_mblz_nope": 155, "mblz_ffpwr_cnt": 520}, {"year": 2019, "month": 2, "date_str": "2019-02-01", "whol_mnpw_cnt": 433, "mblz_policeo_cnt": 18, "mblz_sold_cnt": 10, "mblz_gnrl_ocpt_nope": 50, "etc_mblz_nope": 57, "mblz_ffpwr_cnt": 89}, {"year": 2019, "month": 3, "date_str": "2019-03-01", "whol_mnpw_cnt": 1448, "mblz_policeo_cnt": 96, "mblz_sold_cnt": 11, "mblz_gnrl_ocpt_nope": 503, "etc_mblz_nope": 114, "mblz_ffpwr_cnt": 227}, {"year": 2019, "month": 4, "date_str": "2019-04-01", "whol_mnpw_cnt": 28555, "mblz_policeo_cnt": 1838, "mblz_sold_cnt": 11042, "mblz_gnrl_ocpt_nope": 6409, "etc_mblz_nope": 2327, "mblz_ffpwr_cnt": 4820}, {"year": 2019, "month": 5, "date_str": "2019-05-01", "whol_mnpw_cnt": 2690, "mblz_policeo_cnt": 151, "mblz_sold_cnt": 320, "mblz_gnrl_ocpt_nope": 475, "etc_mblz_nope": 574, "mblz_ffpwr_cnt": 399}, {"year": 2019, "month": 6, "date_str": "2019-06-01", "whol_mnpw_cnt": 264, "mblz_policeo_cnt": 10, "mblz_sold_cnt": 65, "mblz_gnrl_ocpt_nope": 40, "etc_mblz_nope": 31, "mblz_ffpwr_cnt": 77}, {"year": 2019, "month": 7, "date_str": "2019-07-01", "whol_mnpw_cnt": 318, "mblz_policeo_cnt": 22, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 65, "etc_mblz_nope": 20, "mblz_ffpwr_cnt": 73}, {"year": 2019, "month": 8, "date_str": "2019-08-01", "whol_mnpw_cnt": 106, "mblz_policeo_cnt": 3, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 70, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 15}, {"year": 2019, "month": 10, "date_str": "2019-10-01", "whol_mnpw_cnt": 342, "mblz_policeo_cnt": 22, "mblz_sold_cnt": 200, "mblz_gnrl_ocpt_nope": 31, "etc_mblz_nope": 72, "mblz_ffpwr_cnt": 17}, {"year": 2019, "month": 11, "date_str": "2019-11-01", "whol_mnpw_cnt": 154, "mblz_policeo_cnt": 3, "mblz_sold_cnt": 70, "mblz_gnrl_ocpt_nope": 30, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 8}, {"year": 2019, "month": 12, "date_str": "2019-12-01", "whol_mnpw_cnt": 1712, "mblz_policeo_cnt": 179, "mblz_sold_cnt": 373, "mblz_gnrl_ocpt_nope": 236, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 299}, {"year": 2020, "month": 1, "date_str": "2020-01-01", "whol_mnpw_cnt": 623, "mblz_policeo_cnt": 40, "mblz_sold_cnt": 1, "mblz_gnrl_ocpt_nope": 158, "etc_mblz_nope": 49, "mblz_ffpwr_cnt": 191}, {"year": 2020, "month": 2, "date_str": "2020-02-01", "whol_mnpw_cnt": 288, "mblz_policeo_cnt": 13, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 20, "etc_mblz_nope": 40, "mblz_ffpwr_cnt": 60}, {"year": 2020, "month": 3, "date_str": "2020-03-01", "whol_mnpw_cnt": 1670, "mblz_policeo_cnt": 104, "mblz_sold_cnt": 250, "mblz_gnrl_ocpt_nope": 298, "etc_mblz_nope": 236, "mblz_ffpwr_cnt": 299}, {"year": 2020, "month": 4, "date_str": "2020-04-01", "whol_mnpw_cnt": 3365, "mblz_policeo_cnt": 169, "mblz_sold_cnt": 410, "mblz_gnrl_ocpt_nope": 413, "etc_mblz_nope": 464, "mblz_ffpwr_cnt": 678}, {"year": 2020, "month": 5, "date_str": "2020-05-01", "whol_mnpw_cnt": 436, "mblz_policeo_cnt": 17, "mblz_sold_cnt": 102, "mblz_gnrl_ocpt_nope": 88, "etc_mblz_nope": 71, "mblz_ffpwr_cnt": 91}, {"year": 2020, "month": 6, "date_str": "2020-06-01", "whol_mnpw_cnt": 315, "mblz_policeo_cnt": 12, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 77, "etc_mblz_nope": 31, "mblz_ffpwr_cnt": 50}, {"year": 2020, "month": 7, "date_str": "2020-07-01", "whol_mnpw_cnt": 29, "mblz_policeo_cnt": 2, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 0, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 27}, {"year": 2020, "month": 10, "date_str": "2020-10-01", "whol_mnpw_cnt": 534, "mblz_policeo_cnt": 27, "mblz_sold_cnt": 86, "mblz_gnrl_ocpt_nope": 53, "etc_mblz_nope": 81, "mblz_ffpwr_cnt": 99}, {"year": 2020, "month": 11, "date_str": "2020-11-01", "whol_mnpw_cnt": 300, "mblz_policeo_cnt": 19, "mblz_sold_cnt": 30, "mblz_gnrl_ocpt_nope": 60, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 86}, {"year": 2020, "month": 12, "date_str": "2020-12-01", "whol_mnpw_cnt": 522, "mblz_policeo_cnt": 25, "mblz_sold_cnt": 95, "mblz_gnrl_ocpt_nope": 36, "etc_mblz_nope": 50, "mblz_ffpwr_cnt": 121}, {"year": 2021, "month": 1, "date_str": "2021-01-01", "whol_mnpw_cnt": 1233, "mblz_policeo_cnt": 92, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 262, "etc_mblz_nope": 140, "mblz_ffpwr_cnt": 383}, {"year": 2021, "month": 2, "date_str": "2021-02-01", "whol_mnpw_cnt": 6146, "mblz_policeo_cnt": 289, "mblz_sold_cnt": 412, "mblz_gnrl_ocpt_nope": 1120, "etc_mblz_nope": 456, "mblz_ffpwr_cnt": 1166}, {"year": 2021, "month": 3, "date_str": "2021-03-01", "whol_mnpw_cnt": 2299, "mblz_policeo_cnt": 142, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 251, "etc_mblz_nope": 290, "mblz_ffpwr_cnt": 393}, {"year": 2021, "month": 4, "date_str": "2021-04-01", "whol_mnpw_cnt": 2602, "mblz_policeo_cnt": 129, "mblz_sold_cnt": 100, "mblz_gnrl_ocpt_nope": 196, "etc_mblz_nope": 165, "mblz_ffpwr_cnt": 730}, {"year": 2021, "month": 5, "date_str": "2021-05-01", "whol_mnpw_cnt": 2034, "mblz_policeo_cnt": 98, "mblz_sold_cnt": 42, "mblz_gnrl_ocpt_nope": 288, "etc_mblz_nope": 352, "mblz_ffpwr_cnt": 422}, {"year": 2021, "month": 6, "date_str": "2021-06-01", "whol_mnpw_cnt": 252, "mblz_policeo_cnt": 28, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 26, "etc_mblz_nope": 20, "mblz_ffpwr_cnt": 88}, {"year": 2022, "month": 1, "date_str": "2022-01-01", "whol_mnpw_cnt": 612, "mblz_policeo_cnt": 48, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 136, "etc_mblz_nope": 0, "mblz_ffpwr_cnt": 185}, {"year": 2022, "month": 2, "date_str": "2022-02-01", "whol_mnpw_cnt": 2206, "mblz_policeo_cnt": 112, "mblz_sold_cnt": 41, "mblz_gnrl_ocpt_nope": 559, "etc_mblz_nope": 155, "mblz_ffpwr_cnt": 533}, {"year": 2022, "month": 3, "date_str": "2022-03-01", "whol_mnpw_cnt": 19446, "mblz_policeo_cnt": 2089, "mblz_sold_cnt": 6205, "mblz_gnrl_ocpt_nope": 3775, "etc_mblz_nope": 2127, "mblz_ffpwr_cnt": 2036}, {"year": 2022, "month": 4, "date_str": "2022-04-01", "whol_mnpw_cnt": 8873, "mblz_policeo_cnt": 531, "mblz_sold_cnt": 1867, "mblz_gnrl_ocpt_nope": 2079, "etc_mblz_nope": 1686, "mblz_ffpwr_cnt": 1620}, {"year": 2022, "month": 5, "date_str": "2022-05-01", "whol_mnpw_cnt": 1442, "mblz_policeo_cnt": 106, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 190, "etc_mblz_nope": 280, "mblz_ffpwr_cnt": 363}, {"year": 2022, "month": 6, "date_str": "2022-06-01", "whol_mnpw_cnt": 240, "mblz_policeo_cnt": 13, "mblz_sold_cnt": 2, "mblz_gnrl_ocpt_nope": 47, "etc_mblz_nope": 15, "mblz_ffpwr_cnt": 70}, {"year": 2022, "month": 9, "date_str": "2022-09-01", "whol_mnpw_cnt": 142, "mblz_policeo_cnt": 6, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 32, "etc_mblz_nope": 59, "mblz_ffpwr_cnt": 30}, {"year": 2022, "month": 10, "date_str": "2022-10-01", "whol_mnpw_cnt": 233, "mblz_policeo_cnt": 23, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 42, "etc_mblz_nope": 76, "mblz_ffpwr_cnt": 59}, {"year": 2022, "month": 11, "date_str": "2022-11-01", "whol_mnpw_cnt": 429, "mblz_policeo_cnt": 63, "mblz_sold_cnt": 0, "mblz_gnrl_ocpt_nope": 13, "etc_mblz_nope": 54, "mblz_ffpwr_cnt": 128}, {"year": 2022, "month": 12, "date_str": "2022-12-01", "whol_mnpw_cnt": 834, "mblz_policeo_cnt": 47, "mblz_sold_cnt": 11, "mblz_gnrl_ocpt_nope": 6, "etc_mblz_nope": 58, "mblz_ffpwr_cnt": 208}];
+
+// 한글 라벨
+const labelMap = {
+  whol_mnpw_cnt: "동원 인력(합계)",
+  mblz_policeo_cnt: "경찰 동원",
+  mblz_sold_cnt: "군 병력 동원",
+  mblz_gnrl_ocpt_nope: "일반직 동원",
+  etc_mblz_nope: "기타 동원",
+  mblz_ffpwr_cnt: "소방 인력 동원",
+};
+
+// 사용 라인 컬럼
+const lineCols = Object.keys(labelMap).filter(k => k !== "whol_mnpw_cnt");
+
+// 연도별로 데이터 그룹
+const groups = d3.group(raw, d => d.year);
+const years = Array.from(groups.keys()).sort((a,b) => a-b);
+
+// 차트 사이즈
+const width = 620, height = 320, margin = {top: 28, right: 56, bottom: 40, left: 48};
+const innerW = width - margin.left - margin.right;
+const innerH = height - margin.top - margin.bottom;
+
+const color = d3.scaleOrdinal()
+  .domain(lineCols)
+  .range(d3.schemeTableau10);
+
+// 도구팁
+const tooltip = d3.select("#tooltip");
+
+// 패널 생성
+const container = d3.select("#chart");
+years.forEach(year => {
+  const data = groups.get(year);
+  const panel = container.append("div").attr("class","panel");
+  panel.append("div").attr("class","title").text(`${year}년 월별 동원 인력(막대) & 지원지표(라인)`);
+
+  const svg = panel.append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+  const g = svg.append("g").attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+  // X축: 월(1~12)
+  const months = d3.range(1, 13);
+  const x = d3.scaleBand().domain(months).range([0, innerW]).padding(0.18);
+
+  // Y0: 동원 인력(막대)
+  const y0 = d3.scaleLinear()
+      .domain([0, d3.max(data, d => +d.whol_mnpw_cnt) || 1]).nice()
+      .range([innerH, 0]);
+
+  // Y1: 라인(지원지표) - 우측 축
+  const y1Max = d3.max(lineCols, c => d3.max(data, d => +d[c] || 0)) || 1;
+  const y1 = d3.scaleLinear()
+      .domain([0, y1Max]).nice()
+      .range([innerH, 0]);
+
+  // 그리드(가로)
+  g.append("g")
+   .attr("class","axis")
+   .attr("transform", `translate(0,0)`)
+   .call(d3.axisLeft(y0).ticks(5).tickSize(-innerW))
+   .call(g => g.select(".domain").remove())
+   .call(g => g.selectAll(".tick line").attr("stroke","#eee"));
+
+  // 막대
+  g.selectAll(".bar")
+    .data(data)
+    .join("rect")
+      .attr("class","bar")
+      .attr("x", d => x(+d.month))
+      .attr("y", d => y0(+d.whol_mnpw_cnt))
+      .attr("width", x.bandwidth())
+      .attr("height", d => innerH - y0(+d.whol_mnpw_cnt))
+      .on("mousemove", (event, d) => {
+        tooltip.style("opacity", 1)
+               .style("left", (event.pageX + 12) + "px")
+               .style("top",  (event.pageY - 12) + "px")
+               .html(
+                 `<b>${year}년 ${String(d.month).padStart(2,'0')}월</b><br/>` +
+                 `${labelMap.whol_mnpw_cnt}: <b>${(+d.whol_mnpw_cnt).toLocaleString()}</b>`
+               );
+      })
+      .on("mouseleave", () => tooltip.style("opacity", 0));
+
+  // 라인 생성기
+  const line = d3.line()
+     .x(d => x(+d.month) + x.bandwidth()/2)
+     .y((d, col) => y1(+d[col] || 0))
+     .curve(d3.curveMonotoneX);
+
+  // 각 지표 라인
+  lineCols.forEach(col => {
+    // 데이터가 모두 0이면 스킵
+    const allZero = d3.sum(data, d => +d[col] || 0) === 0;
+    if (allZero) return;
+
+    g.append("path")
+      .datum(data)
+      .attr("fill","none")
+      .attr("stroke", color(col))
+      .attr("stroke-width", 2)
+      .attr("d", d3.line()
+            .x(d => x(+d.month) + x.bandwidth()/2)
+            .y(d => y1(+d[col] || 0))
+            .curve(d3.curveMonotoneX)
+        );
+
+    // 점 + 툴팁
+    g.selectAll(`.dot-${col}`)
+      .data(data)
+      .join("circle")
+        .attr("class", `dot dot-${col}`)
+        .attr("cx", d => x(+d.month) + x.bandwidth()/2)
+        .attr("cy", d => y1(+d[col] || 0))
+        .attr("r", 3)
+        .attr("fill", color(col))
+        .on("mousemove", (event, d) => {
+          tooltip.style("opacity", 1)
+                 .style("left", (event.pageX + 12) + "px")
+                 .style("top",  (event.pageY - 12) + "px")
+                 .html(
+                   `<b>${year}년 ${String(d.month).padStart(2,'0')}월</b><br/>` +
+                   `${labelMap[col]}: <b>${(+d[col] || 0).toLocaleString()}</b>`
+                 );
+        })
+        .on("mouseleave", () => tooltip.style("opacity", 0));
+  });
+
+  // 축
+  g.append("g")
+    .attr("transform", `translate(0, ${innerH})`)
+    .call(d3.axisBottom(x).tickValues(months).tickFormat(d => String(d).padStart(2,"0")));
+
+  g.append("g").call(d3.axisLeft(y0).ticks(5));
+  g.append("g")
+    .attr("transform", `translate(${innerW}, 0)`)
+    .call(d3.axisRight(y1).ticks(5));
+
+  // 범례 (오른쪽 상단)
+  const legendItems = ["whol_mnpw_cnt", ...lineCols];
+  const legend = g.append("g").attr("class","legend");
+  const boxX = innerW - 10, boxY = 0;
+  const itemH = 18, padX = 10, padY = 8;
+
+  // 미리 텍스트 폭 계산
+  const temp = legend.append("g").attr("opacity", 0);
+  let maxW = 0;
+  legendItems.forEach((k,i) => {
+    const t = temp.append("text").text(labelMap[k] || k).attr("font-size", 12);
+    maxW = Math.max(maxW, t.node().getBBox().width);
+  });
+  temp.remove();
+
+  const boxW = maxW + 48;
+  legend.append("rect")
+    .attr("x", boxX - boxW)
+    .attr("y", boxY)
+    .attr("width", boxW)
+    .attr("height", padY*2 + itemH * legendItems.length)
+    .attr("rx", 8).attr("ry", 8);
+
+  legendItems.forEach((k, i) => {
+    const y = boxY + padY + i*itemH + 12;
+    const swatchColor = (k === "whol_mnpw_cnt") ? "#90caf9" : color(k);
+
+    legend.append("rect")
+      .attr("x", boxX - boxW + 10)
+      .attr("y", y - 9)
+      .attr("width", 14)
+      .attr("height", 14)
+      .attr("fill", swatchColor)
+      .attr("stroke", (k === "whol_mnpw_cnt") ? "none" : "none");
+
+    legend.append("text")
+      .attr("x", boxX - boxW + 30)
+      .attr("y", y)
+      .attr("dominant-baseline","middle")
+      .text(labelMap[k] || k);
+  });
+});
+</script>
+</body>
+</html>
