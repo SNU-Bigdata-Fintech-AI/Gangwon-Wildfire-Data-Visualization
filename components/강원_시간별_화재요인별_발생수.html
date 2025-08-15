@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>시간대별 화재 건수 & 원인별 라인 (스크롤 트리거)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: transparent;     /* Streamlit과 자연스럽게 어울리도록 */
+    --axis: #c7ced6;
+    --grid: #eef2f7;
+    --bar:  #90caf9;
+    --ink:  #111827;
+  }
+  html, body { margin:0; padding:0; background:var(--bg); }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",Arial,sans-serif;
+    color:#fff;
+  }
+  .head { display:flex; justify-content:space-between; align-items:center; padding:2px 0 8px 0; }
+  .head h3 { margin:0; font-size:16px; font-weight:800; color:#ffffff; }
+  .wrap { padding:0; }
+
+  .axis path, .axis line { stroke:var(--axis); }
+  .grid line { stroke: var(--grid); }
+  .bar  { fill: var(--bar); opacity: 0.9; }
+  .line { fill:none; stroke-width:2; }
+  .dot  { r:3; }
+  .legend text { fill:#273142; font-size:12px; }
+  .legend .bg { fill: rgba(255,255,255,0.85); stroke: #d6dbe3; rx:8; ry:8; }
+  .tooltip {
+    position:fixed; pointer-events:none; z-index:9999; opacity:0;
+    background:rgba(0,0,0,0.82); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px;
+  }
+</style>
+</head>
+<body>
+<div class="head">
+  <h3>시간대별 화재 발생(막대) & 주요 원인(선)</h3>
+</div>
+<div class="wrap">
+  <svg id="chart" width="100%" height="440"></svg>
+</div>
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+// ===== Streamlit에서 치환됨 =====
+const HOURLY = __DATA_HOURLY__;   // [{hour:0..23, count:int}, ...]
+const CAUSES = __DATA_CAUSE__;    // [{cause:"...", hour:0..23, count:int}, ...]
+
+// ----- 크기/마진 -----
+const svg = d3.select("#chart");
+const bbox = svg.node().getBoundingClientRect();
+const W = Math.max(720, Math.min(1100, bbox.width));
+const H = 440;
+const M = { top: 24, right: 64, bottom: 48, left: 76 };
+const innerW = W - M.left - M.right;
+const innerH = H - M.top - M.bottom;
+svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+// ----- 스케일 -----
+const hours = d3.range(24);
+const x = d3.scaleBand().domain(hours).range([0, innerW]).padding(0.18);
+
+const maxBar  = d3.max(HOURLY, d => d.count) || 1;
+const maxLine = d3.max(CAUSES, d => d.count) || 1;
+const y = d3.scaleLinear().domain([0, Math.max(maxBar, maxLine) * 1.12]).nice().range([innerH, 0]);
+
+// ----- 격자/축 -----
+const yTicks = Math.max(3, Math.min(8, Math.floor(innerH / 60)));
+
+g.append("g")
+  .attr("class","grid")
+  .call(
+    d3.axisLeft(y)
+      .ticks(yTicks)
+      .tickSize(-innerW)
+      .tickFormat(() => "")
+  )
+  .call(g => g.select(".domain").remove());
+
+const xAxisG = g.append("g")
+  .attr("transform", `translate(0,${innerH})`)
+  .call(d3.axisBottom(x).tickFormat(d => `${String(d).padStart(2,"0")}`).tickPadding(6));
+
+const yAxisG = g.append("g")
+  .attr("class","y-axis")
+  .call(d3.axisLeft(y).ticks(yTicks).tickFormat(d3.format(",d")).tickPadding(6));
+
+xAxisG.selectAll("text").style("font-size","12px").attr("dy","0.8em");
+yAxisG.selectAll("text").style("font-size","12px");
+
+// ----- 레이어 -----
+const barsG  = g.append("g").attr("class","bars");
+const linesG = g.append("g").attr("class","lines");
+const dotsG  = g.append("g").attr("class","dots");
+
+// ----- 툴팁 -----
+const tip = d3.select("#tooltip");
+
+// 상태 플래그
+let drawn = false;
+
+// ----- 그리기 함수 -----
+function draw() {
+  if (drawn) return;
+
+  // 막대
+  barsG.selectAll("rect.bar")
+    .data(HOURLY, d => d.hour)
+    .join("rect")
+      .attr("class","bar")
+      .attr("x", d => x(d.hour))
+      .attr("y", innerH)
+      .attr("width", x.bandwidth())
+      .attr("height", 0)
+      .on("mousemove", (ev,d) => {
+        tip.style("opacity", 1)
+           .style("left", (ev.clientX + 12) + "px")
+           .style("top",  (ev.clientY - 12) + "px")
+           .html(`<b>${String(d.hour).padStart(2,"0")}시</b><br/>총 건수: <b>${d3.format(",d")(d.count)}</b>`);
+      })
+      .on("mouseleave", () => tip.style("opacity", 0))
+      .transition()
+        .duration(900)
+        .ease(d3.easeCubicOut)
+        .attr("y", d => y(d.count))
+        .attr("height", d => innerH - y(d.count));
+
+  // 원인별 라인 & 점
+  const nested = d3.group(CAUSES, d => d.cause);
+  const keys = Array.from(nested.keys());
+  const color = d3.scaleOrdinal().domain(keys).range(d3.schemeTableau10);
+
+  keys.forEach((k, i) => {
+    const series = nested.get(k).slice().sort((a,b)=>d3.ascending(a.hour,b.hour));
+
+    const path = linesG.append("path")
+      .datum(series)
+      .attr("class","line")
+      .attr("stroke", color(k))
+      .attr("d", d3.line()
+        .x(d => x(d.hour) + x.bandwidth()/2)
+        .y(d => y(d.count))
+        .curve(d3.curveMonotoneX)
+      );
+
+    const L = path.node().getTotalLength();
+    path.attr("stroke-dasharray", `${L} ${L}`)
+        .attr("stroke-dashoffset", L)
+        .transition()
+          .delay(150 + i*150)
+          .duration(1000)
+          .ease(d3.easeCubic)
+          .attr("stroke-dashoffset", 0);
+
+    dotsG.selectAll(`circle.dot-${i}`)
+      .data(series, d => d.hour)
+      .join("circle")
+        .attr("class", `dot dot-${i}`)
+        .attr("cx", d => x(d.hour) + x.bandwidth()/2)
+        .attr("cy", d => y(d.count))
+        .attr("r", 3)
+        .attr("fill", color(k))
+        .attr("opacity", 0)
+        .on("mousemove", (ev,d) => {
+          tip.style("opacity", 1)
+             .style("left", (ev.clientX + 12) + "px")
+             .style("top",  (ev.clientY - 12) + "px")
+             .html(`<b>${String(d.hour).padStart(2,"0")}시</b><br/>${k}: <b>${d3.format(",d")(d.count)}</b>`);
+        })
+        .on("mouseleave", () => tip.style("opacity", 0))
+        .transition()
+          .delay(300 + i*150)
+          .duration(400)
+          .attr("opacity", 1);
+  });
+
+  // 범례
+  const legend = g.append("g").attr("class","legend");
+  const items = ["총 건수(막대)", ...Array.from(new Set(CAUSES.map(d=>d.cause)))];
+  const itemH = 18, pad = 10, sw = 12, gap = 8;
+  let maxW = 0;
+  const temp = legend.append("g").attr("opacity", 0);
+  items.forEach(k => {
+    const t = temp.append("text").text(k).attr("font-size", 12);
+    maxW = Math.max(maxW, t.node().getBBox().width);
+  });
+  temp.remove();
+  const boxW = pad*2 + sw + gap + maxW;
+  const boxH = pad*2 + itemH * items.length;
+  const boxX = innerW - boxW;
+  const boxY = 4;
+
+  legend.append("rect").attr("class","bg")
+    .attr("x", boxX).attr("y", boxY).attr("width", boxW).attr("height", boxH);
+
+  const colorFor = k => k === "총 건수(막대)" ? "#90caf9"
+                    : d3.schemeTableau10[items.slice(1).indexOf(k) % 10];
+
+  items.forEach((k,i) => {
+    const y0 = boxY + pad + i*itemH + sw/2;
+    legend.append("rect")
+      .attr("x", boxX + pad).attr("y", y0 - sw/2)
+      .attr("width", sw).attr("height", sw)
+      .attr("fill", colorFor(k));
+    legend.append("text")
+      .attr("x", boxX + pad + sw + gap).attr("y", y0)
+      .attr("dominant-baseline","middle").text(k);
+  });
+
+  drawn = true;
+}
+
+// ----- 초기화 함수 -----
+function reset() {
+  g.selectAll(".bars *").interrupt().remove();
+  g.selectAll(".lines *").interrupt().remove();
+  g.selectAll(".dots *").interrupt().remove();
+  g.selectAll(".legend").remove();
+  d3.select("#tooltip").style("opacity", 0);
+  drawn = false;
+}
+
+// ----- 스크롤 트리거(뷰포트 진입/이탈) -----
+const panel = document.body; // 이 iframe/컴포넌트 전체를 기준
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const ratio = entry.intersectionRatio;
+    if (ratio >= 0.25 && !drawn) draw();
+    if (ratio === 0 && drawn) reset();
+  });
+}, { root: null, rootMargin: "0px", threshold: [0, 0.25] });
+io.observe(panel);
+
+// 빠른 스크롤 보강
+let rafId = null;
+function onScrollCheck() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    const vh = window.innerHeight;
+    const rect = panel.getBoundingClientRect();
+    const out = (rect.bottom <= 0) || (rect.top >= vh);
+    if (out && drawn) reset();
+    rafId = null;
+  });
+}
+window.addEventListener('scroll', onScrollCheck, { passive: true });
+window.addEventListener('resize', onScrollCheck);
+
+// 탭 전환/포커스 전환 대응(선택)
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) reset();
+  else draw();
+});
+window.addEventListener("blur",  () => reset());
+window.addEventListener("focus", () => draw());
+</script>
+</body>
+</html>

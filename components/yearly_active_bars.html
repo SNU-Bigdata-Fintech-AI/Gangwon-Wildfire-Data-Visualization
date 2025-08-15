@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>D3 Yearly Active Bars</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: transparent;
+    --ink: #222;
+    --axis: #cfd8e3;
+    --grid: #e9eef5;
+    --bar: #90caf9;
+  }
+
+  html, body { margin:0; padding:0; background: var(--bg); }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",Arial,sans-serif; color: #fff; }
+
+  .panel { max-width:960px; margin:0 auto; }
+  .head { display:flex; align-items:center; justify-content:space-between; padding:4px 0 8px 0; gap:8px; }
+  .head h3 { margin:0; font-size:16px; font-weight:700; color:#fff; } /* 제목 흰색 */
+  .btns { display:flex; gap:8px; }
+  .btns button { font-size:12px; padding:6px 10px; border:1px solid #d1d5db; background:#f9fafb; border-radius:8px; cursor:pointer; }
+  .btns button:hover { background:#f3f4f6; }
+  .wrap { padding:0; }
+
+  .axis path, .axis line { stroke:#d1d5db; }
+  .grid line { stroke: var(--grid); }
+  .bar { fill: var(--bar); }
+  .value { font-size:12px; fill:#374151; font-weight:700; }
+  .tooltip {
+    position:fixed; pointer-events:none; z-index:9999; opacity:0;
+    background:rgba(0,0,0,0.82); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px;
+  }
+  .note { color:#6b7280; font-size:12px; padding:6px 0 0 0; }
+</style>
+</head>
+<body>
+<div class="panel" id="panel">
+  <div class="head">
+    <h3> </h3>
+    <div class="btns">
+      <!-- Reset/Replay 버튼 제거 -->
+      <button id="sort">값기준</button>
+    </div>
+  </div>
+  <div class="wrap">
+    <svg id="chart" width="100%" height="420"></svg>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+// __DATA_JSON__ 은 서버(app.py)에서 문자열 치환됩니다.
+const data = __DATA_JSON__.map(d => ({ year:+d.year, count:+d.count }));
+
+const svg = d3.select("#chart");
+const bbox = svg.node().getBoundingClientRect();
+const W = Math.max(680, Math.min(920, bbox.width));
+const H = 380;
+const M = { top: 20, right: 20, bottom: 48, left: 76 };
+const innerW = W - M.left - M.right;
+const innerH = H - M.top - M.bottom;
+svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+let x = d3.scaleBand().domain(data.map(d => d.year)).range([0, innerW]).padding(0.18);
+const maxY = d3.max(data, d => d.count) || 1;
+const y = d3.scaleLinear().domain([0, maxY * 1.12]).nice().range([innerH, 0]);
+
+const yTicks = Math.max(3, Math.min(8, Math.floor(innerH / 60)));
+
+g.append("g")
+  .attr("class","grid")
+  .call(d3.axisLeft(y).ticks(yTicks).tickSize(-innerW).tickFormat(() => ""))
+  .call(g => g.select(".domain").remove());
+
+const xAxisG = g.append("g").attr("transform", `translate(0,${innerH})`)
+  .call(d3.axisBottom(x).tickPadding(6));
+
+const yAxisG = g.append("g")
+  .attr("class","y-axis")
+  .call(d3.axisLeft(y).ticks(yTicks).tickFormat(d3.format(",d")).tickPadding(6));
+
+xAxisG.selectAll("text").style("font-size","12px").attr("dy","0.8em");
+yAxisG.selectAll("text").style("font-size","12px");
+
+const barsG = g.append("g");
+const labelsG = g.append("g");
+const tip = d3.select("#tooltip");
+
+let hasDrawn = false;
+
+function tweenCount(sel, start, end, duration=800, fmt=d3.format(",d")) {
+  sel.transition().duration(duration).tween("text", function(){
+    const i = d3.interpolateNumber(start, end);
+    return function(t){ this.textContent = fmt(Math.round(i(t))); };
+  });
+}
+
+function resetBars() {
+  barsG.selectAll("*").interrupt().remove();
+  labelsG.selectAll("*").interrupt().remove();
+  tip.style("opacity", 0);
+  hasDrawn = false;
+}
+
+function drawBars(seq=true) {
+  if (hasDrawn) return;
+
+  const bar = barsG.selectAll("rect.bar").data(data, d => d.year);
+  const enter = bar.enter().append("rect")
+      .attr("class","bar")
+      .attr("x", d => x(d.year))
+      .attr("width", x.bandwidth())
+      .attr("y", innerH)
+      .attr("height", 0)
+      .on("mousemove", (ev,d) => {
+        tip.style("opacity", 1)
+           .style("left", (ev.clientX + 12) + "px")
+           .style("top",  (ev.clientY - 12) + "px")
+           .html(`<b>${d.year}년</b><br/>건수: <b>${d3.format(",d")(d.count)}</b>`);
+      })
+      .on("mouseleave", () => tip.style("opacity", 0));
+
+  const dur = 900, ease = d3.easeCubicOut;
+  (seq ? enter.transition().delay((_,i)=> i*120) : enter.transition())
+      .duration(dur).ease(ease)
+      .attr("y", d => y(d.count))
+      .attr("height", d => innerH - y(d.count));
+
+  bar.transition().duration(800)
+      .attr("x", d => x(d.year))
+      .attr("width", x.bandwidth())
+      .attr("y", d => y(d.count))
+      .attr("height", d => innerH - y(d.count));
+
+  bar.exit().remove();
+
+  const lbl = labelsG.selectAll("text.value").data(data, d => d.year);
+  const lblEnter = lbl.enter().append("text")
+      .attr("class","value")
+      .attr("x", d => x(d.year) + x.bandwidth()/2)
+      .attr("y", innerH - 6)
+      .attr("text-anchor","middle")
+      .text("0");
+
+  (seq ? lblEnter.transition().delay((_,i)=> i*120) : lblEnter.transition())
+      .duration(dur).ease(ease)
+      .attr("y", d => y(d.count) - 6)
+      .on("start", function(_,i){
+        const d = data[i];
+        tweenCount(d3.select(this), 0, d.count, dur);
+      });
+
+  lbl.transition().duration(800)
+     .attr("x", d => x(d.year) + x.bandwidth()/2)
+     .attr("y", d => y(d.count) - 6)
+     .tween("text", function(d){
+        return function(){ this.textContent = d3.format(",d")(d.count); };
+     });
+
+  lbl.exit().remove();
+
+  hasDrawn = true;
+}
+
+drawBars(true);
+
+// 정렬 토글
+let sortByValue = false;
+document.getElementById("sort").addEventListener("click", (e) => {
+  sortByValue = !sortByValue;
+  if (sortByValue) {
+    data.sort((a,b) => d3.descending(a.count, b.count));
+    e.target.textContent = "연도기준";
+  } else {
+    data.sort((a,b) => d3.ascending(a.year, b.year));
+    e.target.textContent = "값기준";
+  }
+  x.domain(data.map(d => d.year));
+  d3.select(xAxisG.node()).transition().duration(600).call(d3.axisBottom(x));
+  resetBars();
+  drawBars(false);
+});
+
+/* -------------------------------
+   화면 이탈/복귀 & 뷰포트 관찰 처리 (복원)
+-------------------------------- */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) resetBars();
+  else drawBars(true);
+});
+window.addEventListener("blur", () => resetBars());
+window.addEventListener("focus", () => drawBars(true));
+window.addEventListener("pagehide", () => resetBars());
+
+// 뷰포트 완전 이탈 시 초기화 / 25% 이상 보이면 재생
+const panel = document.getElementById("panel");
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const ratio = entry.intersectionRatio;
+    if (ratio === 0 && hasDrawn) resetBars();
+    else if (ratio >= 0.25 && !hasDrawn) drawBars(true);
+  });
+}, { root: null, rootMargin: "0px", threshold: [0, 0.25] });
+io.observe(panel);
+
+// 빠른 스크롤 보강(rAF)
+let rafId = null;
+function onScrollCheck() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    const vh = window.innerHeight;
+    const rect = panel.getBoundingClientRect();
+    const out = (rect.bottom <= 0) || (rect.top >= vh);
+    if (out && hasDrawn) resetBars();
+    rafId = null;
+  });
+}
+window.addEventListener('scroll', onScrollCheck, { passive: true });
+window.addEventListener('resize', onScrollCheck);
+</script>
+</body>
+</html>
