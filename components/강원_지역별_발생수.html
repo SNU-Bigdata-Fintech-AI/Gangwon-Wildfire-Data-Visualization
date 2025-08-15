@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>지역별·연도별 화재 발생 (가로 막대)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: transparent;     /* Streamlit 배경과 자연스럽게 */
+    --axis: #c7ced6;
+    --grid: #eef2f7;
+    --bar:  #90caf9;
+    --ink:  #111827;
+  }
+  html, body { margin:0; padding:0; background:var(--bg); }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",Arial,sans-serif;
+    color:#fff;
+  }
+
+  /* 상단 연도 버튼들 */
+  .topbar { display:flex; align-items:center; gap:8px; padding:4px 0 10px 0; flex-wrap:wrap; }
+  .topbar .label { color:#e5e7eb; font-size:14px; margin-right:4px; }
+  #yearButtons { display:flex; gap:8px; flex-wrap:wrap; }
+  #yearButtons button {
+    border:1px solid #d1d5db; background:#f9fafb; color:#111827;
+    border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer;
+  }
+  #yearButtons button:hover { background:#f3f4f6; }
+  #yearButtons button.active { background:#2563eb; color:#fff; }
+
+  .axis path, .axis line { stroke:var(--axis); }
+  .grid line { stroke: var(--grid); }
+  .bar   { fill: var(--bar); opacity: 0.92; }
+  .value { font-size:12px; fill:#cddbf5; font-weight:700; }
+  .tooltip {
+    position:fixed; pointer-events:none; z-index:9999; opacity:0;
+    background:rgba(0,0,0,0.82); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="label">연도</span>
+  <div id="yearButtons"></div>
+</div>
+
+<svg id="chart" width="100%" height="520"></svg>
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+// ===== 데이터 (Streamlit에서 치환) =====
+const RAW = __DATA_JSON__; // [{year:number, region:string, count:number}, ...]
+
+/* 연도별 그룹 & 연도 목록 */
+const byYear = d3.group(RAW, d => +d.year);
+const years  = Array.from(byYear.keys()).sort(d3.ascending);
+
+/* '전체' 집계 데이터 (모든 연도 합) */
+const totalData = Array.from(
+  d3.rollup(RAW, v => d3.sum(v, d => +d.count), d => d.region),
+  ([region, count]) => ({ region, count })
+);
+
+/* 크기/마진 */
+const svg  = d3.select("#chart");
+const bbox = svg.node().getBoundingClientRect();
+const W = Math.max(720, Math.min(1100, bbox.width));
+const H = 520;
+/* 왼쪽 레이블 여백 넉넉히 */
+const M = { top: 20, right: 32, bottom: 40, left: 75 };
+const innerW = W - M.left - M.right;
+const innerH = H - M.top - M.bottom;
+svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+const g   = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+const tip = d3.select("#tooltip");
+
+/* 레이어 */
+const gridG   = g.append("g").attr("class","grid");
+const barsG   = g.append("g");
+const labelsG = g.append("g");
+const xAxisG  = g.append("g").attr("transform", `translate(0,${innerH})`);
+const yAxisG  = g.append("g");
+
+/* 상태 */
+let hasDrawn = false;
+let currentYear = "전체";
+
+/* 스케일 */
+let x = d3.scaleLinear().range([0, innerW]);
+let y = d3.scaleBand().range([0, innerH]).padding(0.16);
+
+/* 버튼 UI 생성 (전체 + 각 연도) */
+const btnWrap = document.getElementById("yearButtons");
+["전체", ...years].forEach(yv => {
+  const btn = document.createElement("button");
+  btn.textContent = yv;
+  btn.dataset.year = yv;
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#yearButtons button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentYear = yv;
+    if (!hasDrawn) { render(true); return; }
+    render(false);
+  });
+  btnWrap.appendChild(btn);
+});
+/* 기본 선택: 전체 */
+document.querySelector("#yearButtons button").classList.add("active");
+
+/* 데이터 얻기(정렬: 값 기준 내림차순) */
+function getYearData(ySel){
+  let arr;
+  if (ySel === "전체") {
+    arr = totalData;
+  } else {
+    arr = (byYear.get(+ySel) ?? []).map(d => ({ region: d.region, count: +d.count }));
+  }
+  arr = arr.filter(d => d.region && Number.isFinite(d.count) && d.count >= 0);
+  arr.sort((a,b) => d3.descending(a.count, b.count));
+  return arr;
+}
+
+/* 축/그리드 */
+function drawAxes(data){
+  const maxX = d3.max(data, d => d.count) || 1;
+  x.domain([0, maxX * 1.08]).nice();
+  y.domain(data.map(d => d.region));
+
+  gridG
+    .call(d3.axisBottom(x).ticks(6).tickSize(innerH).tickFormat(() => ""))
+    .call(g => g.select(".domain").remove())
+    .attr("transform", "translate(0,0)");
+
+  xAxisG.transition().duration(500)
+    .call(d3.axisBottom(x).ticks(6).tickFormat(d3.format(",d")).tickPadding(6));
+  xAxisG.selectAll("text").style("font-size","12px");
+
+  yAxisG.transition().duration(500)
+    .call(d3.axisLeft(y).tickSize(0));
+  yAxisG.selectAll("text").style("font-size","12px");
+}
+
+/* 막대/라벨 */
+function drawBars(data, seq=true){
+  const selBars = barsG.selectAll("rect.bar").data(data, d => d.region);
+  const enter = selBars.enter().append("rect")
+    .attr("class","bar")
+    .attr("x", x(0))
+    .attr("y", d => y(d.region))
+    .attr("height", y.bandwidth())
+    .attr("width", 0)
+    .on("mousemove", (ev,d) => {
+      tip.style("opacity", 1)
+         .style("left", (ev.clientX + 12) + "px")
+         .style("top",  (ev.clientY - 12) + "px")
+         .html(`<b>${d.region}</b><br/>건수: <b>${d3.format(",d")(d.count)}</b>`);
+    })
+    .on("mouseleave", () => tip.style("opacity", 0));
+
+  const dur = 800, ease = d3.easeCubicOut;
+  (seq ? enter.transition().delay((_,i)=> i*20) : enter.transition())
+    .duration(dur).ease(ease)
+    .attr("width", d => x(d.count) - x(0));
+
+  selBars.transition().duration(600)
+    .attr("y", d => y(d.region))
+    .attr("height", y.bandwidth())
+    .attr("x", x(0))
+    .attr("width", d => x(d.count) - x(0));
+
+  selBars.exit().transition().duration(300).attr("width", 0).remove();
+
+  const selLbl = labelsG.selectAll("text.value").data(data, d => d.region);
+  const lblEnter = selLbl.enter().append("text")
+    .attr("class","value")
+    .attr("x", d => x(0) + 4)
+    .attr("y", d => y(d.region) + y.bandwidth()/2)
+    .attr("dominant-baseline","middle")
+    .text("0");
+
+  (seq ? lblEnter.transition().delay((_,i)=> i*20) : lblEnter.transition())
+    .duration(dur).ease(ease)
+    .attr("x", d => x(d.count) + 6)
+    .tween("text", function(d){
+      const i = d3.interpolateNumber(0, d.count);
+      return t => this.textContent = d3.format(",d")(Math.round(i(t)));
+    });
+
+  selLbl.transition().duration(600)
+    .attr("x", d => x(d.count) + 6)
+    .attr("y", d => y(d.region) + y.bandwidth()/2)
+    .tween("text", function(d){
+      return t => { if (t === 1) this.textContent = d3.format(",d")(d.count); };
+    });
+
+  selLbl.exit().remove();
+}
+
+/* 렌더 (axes + bars) */
+function render(seq=true){
+  const data = getYearData(currentYear);
+  drawAxes(data);
+  drawBars(data, seq);
+  hasDrawn = true;
+}
+
+/* 실시간 등장/초기화 */
+const target = document.body;
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const r = entry.intersectionRatio;
+    if (r >= 0.25 && !hasDrawn) render(true);
+    else if (r === 0 && hasDrawn) {
+      barsG.selectAll("*").interrupt().remove();
+      labelsG.selectAll("*").interrupt().remove();
+      tip.style("opacity", 0);
+      hasDrawn = false;
+    }
+  });
+}, { root: null, rootMargin: "0px", threshold: [0, 0.25] });
+io.observe(target);
+
+let rafId = null;
+function onScrollCheck() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    const vh = window.innerHeight;
+    const rect = target.getBoundingClientRect();
+    const out = (rect.bottom <= 0) || (rect.top >= vh);
+    if (out && hasDrawn) {
+      barsG.selectAll("*").interrupt().remove();
+      labelsG.selectAll("*").interrupt().remove();
+      tip.style("opacity", 0);
+      hasDrawn = false;
+    }
+    rafId = null;
+  });
+}
+window.addEventListener('scroll', onScrollCheck, { passive: true });
+window.addEventListener('resize', onScrollCheck);
+
+/* 가시성 변화 대응 */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    barsG.selectAll("*").interrupt().remove();
+    labelsG.selectAll("*").interrupt().remove();
+    tip.style("opacity", 0);
+    hasDrawn = false;
+  } else if (!hasDrawn) render(true);
+});
+window.addEventListener("pagehide", () => {
+  barsG.selectAll("*").interrupt().remove();
+  labelsG.selectAll("*").interrupt().remove();
+  tip.style("opacity", 0);
+  hasDrawn = false;
+});
+
+/* 초기: 버튼은 만들어졌지만 실제 차트는 뷰포트 진입 시 렌더됨 */
+</script>
+</body>
+</html>

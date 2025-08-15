@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>연도별 인명피해 면그래프 (사망·부상, 선택 강조 + 분석 오버레이)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: transparent;
+    --axis: #c7ced6;
+    --grid: #3a3f46;
+    --death:  #ef4444; /* 사망자 - 진한색 */
+    --injury: #fca5a5; /* 부상자 - 연한색 */
+    --ink: #f5f5f5;
+  }
+  html, body { margin:0; padding:0; background:var(--bg); }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",Arial,sans-serif;
+    color:var(--ink);
+  }
+
+  .topbar{
+    display:flex; gap:8px; align-items:center; padding:8px 10px 0 10px;
+  }
+  .btn{
+    appearance:none; border:1px solid #5b6675; background:#1f242c; color:#eaeef6;
+    border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer;
+  }
+  .btn[aria-pressed="true"]{
+    background:#2f3745; border-color:#8aa4ff; color:#fff;
+  }
+
+  .axis path, .axis line { stroke:var(--axis); }
+  .axis text { fill:var(--ink); }
+  .grid line { stroke: var(--grid); }
+
+  .area.deaths   { fill: var(--death);  }
+  .area.injuries { fill: var(--injury); }
+
+  .legend text { font-size:12px; fill:#f5f5f5; }
+  .legend .bg { fill: rgba(0,0,0,0.7); stroke:#7a7a7a; rx:6; ry:6; }
+
+  .tooltip {
+    position:fixed; pointer-events:none; z-index:9999; opacity:0;
+    background:rgba(0,0,0,0.9); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px;
+  }
+
+  /* 오버레이 라벨 */
+  .annot {
+    font-size:12px; fill:#fff;
+    paint-order:stroke; stroke:#0008; stroke-width:3px; stroke-linejoin:round;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button id="btnStack"   class="btn" aria-pressed="true">누적</button>
+  <button id="btnDeaths"  class="btn" aria-pressed="false">사망</button>
+  <button id="btnInjuries"class="btn" aria-pressed="false">부상</button>
+</div>
+
+<svg id="chart" width="100%" height="420"></svg>
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+// ===== 데이터 주입 (서버에서 치환) =====
+// 기대 형태: [{year:2016, deaths:10, injuries:23}, ...]
+const RAW = __DATA_JSON__;
+
+// ---- 전처리: 숫자화 & 연도 정렬
+const data = RAW.map(d => ({
+  year: +d.year,
+  deaths: +d.deaths || 0,
+  injuries: +d.injuries || Math.max(0, (+d.casualties || 0) - (+d.deaths || 0))
+})).filter(d => Number.isFinite(d.year))
+  .sort((a,b) => d3.ascending(a.year, b.year));
+
+// ---- 사이즈/마진
+const svg  = d3.select("#chart");
+const bbox = svg.node().getBoundingClientRect();
+const W = Math.max(720, Math.min(1100, bbox.width));
+const H = 420;
+const M = { top: 28, right: 24, bottom: 48, left: 64 };
+const innerW = W - M.left - M.right;
+const innerH = H - M.top - M.bottom;
+svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+// ---- 스케일
+const years = data.map(d => d.year);
+const x = d3.scalePoint().domain(years).range([0, innerW]).padding(0.5);
+const maxY = d3.max(data, d => d.deaths + d.injuries) || 1;
+const y = d3.scaleLinear().domain([0, maxY * 1.1]).nice().range([innerH, 0]);
+
+// ---- 격자/축
+g.append("g")
+  .attr("class","grid")
+  .call(d3.axisLeft(y).ticks(6).tickSize(-innerW).tickFormat(() => ""))
+  .call(g => g.select(".domain").remove());
+
+g.append("g")
+  .attr("class","axis")
+  .attr("transform", `translate(0,${innerH})`)
+  .call(d3.axisBottom(x).tickFormat(d => String(d)))
+  .call(g => g.selectAll("text").style("font-size","12px").attr("fill","#f5f5f5"));
+
+g.append("g")
+  .attr("class","axis")
+  .call(d3.axisLeft(y).ticks(6).tickFormat(d3.format(",d")).tickPadding(6))
+  .call(g => g.selectAll("text").style("font-size","12px").attr("fill","#f5f5f5"));
+
+// ---- 스택 영역: deaths(아래) -> injuries(위)
+const keys = ["deaths", "injuries"];
+const stack = d3.stack().keys(keys).order(d3.stackOrderNone).offset(d3.stackOffsetNone);
+const series = stack(data);
+
+// 영역 생성기
+const area = d3.area()
+  .x(d => x(d.data.year))
+  .y0(d => y(d[0]))
+  .y1(d => y(d[1]))
+  .curve(d3.curveMonotoneX);
+
+// 색상
+const color = d3.scaleOrdinal().domain(keys).range(["var(--death)", "var(--injury)"]);
+
+// 레이어
+const layerG = g.append("g").attr("class","layers");
+const paths = layerG.selectAll("path.area")
+  .data(series, d => d.key)
+  .join("path")
+    .attr("class", d => `area ${d.key}`)
+    .attr("data-key", d => d.key)
+    .attr("fill", d => color(d.key))
+    .attr("d", d => area(d));
+
+// === 애니메이션 clipPath ===
+const clip = g.append("clipPath")
+  .attr("id", "reveal-clip")
+  .append("rect")
+    .attr("x", 0)
+    .attr("y", innerH)
+    .attr("width", innerW)
+    .attr("height", 0);
+layerG.attr("clip-path", "url(#reveal-clip)");
+
+// ---- 포커스/툴팁
+const tip = d3.select("#tooltip");
+const focus = g.append("g").style("display","none");
+focus.append("line")
+  .attr("class","focus-line")
+  .attr("y1", 0).attr("y2", innerH)
+  .attr("stroke", "#aaa").attr("stroke-dasharray", "3,3").attr("opacity", 0.8);
+
+svg.on("mousemove", (ev) => {
+  if (!hasDrawn) return;
+  const [mx] = d3.pointer(ev, g.node());
+  const i = d3.leastIndex(years, yv => Math.abs(x(yv) - mx));
+  if (i == null) return;
+  const d = data[i];
+  focus.style("display", null);
+  focus.select(".focus-line").attr("transform", `translate(${x(d.year)},0)`);
+  tip.style("opacity", 1)
+     .style("left", (ev.clientX + 12) + "px")
+     .style("top",  (ev.clientY - 12) + "px")
+     .html(
+      `<b>${d.year}년</b><br/>
+       사망자: <b>${d3.format(",d")(d.deaths)}</b><br/>
+       부상자: <b>${d3.format(",d")(d.injuries)}</b><br/>
+       총 사상자: <b>${d3.format(",d")(d.deaths + d.injuries)}</b>`
+     );
+}).on("mouseleave", () => {
+  focus.style("display","none");
+  tip.style("opacity", 0);
+});
+
+// ---- 범례
+const legend = g.append("g").attr("class","legend");
+const items = [
+  {key:"deaths",  label:"사망자"},
+  {key:"injuries",label:"부상자"}
+];
+const pad = 8, sw = 14, gap = 8, itemH = 18;
+let maxW = 0;
+const tmp = legend.append("g").attr("opacity",0);
+items.forEach(it => {
+  const t = tmp.append("text").text(it.label).attr("font-size",12);
+  maxW = Math.max(maxW, t.node().getBBox().width);
+});
+tmp.remove();
+const boxW = pad*2 + sw + gap + maxW;
+const boxH = pad*2 + itemH * items.length;
+const boxX = innerW - boxW;
+const boxY = 0;
+
+legend.append("rect").attr("class","bg")
+  .attr("x", boxX).attr("y", boxY)
+  .attr("width", boxW).attr("height", boxH);
+
+items.forEach((it, i) => {
+  const y0 = boxY + pad + i*itemH + sw/2;
+  legend.append("rect")
+    .attr("x", boxX + pad).attr("y", y0 - sw/2)
+    .attr("width", sw).attr("height", sw)
+    .attr("fill", color(it.key));
+  legend.append("text")
+    .attr("x", boxX + pad + sw + gap).attr("y", y0)
+    .attr("dominant-baseline","middle")
+    .text(it.label);
+});
+
+// ======== 선택(누적/사망/부상) 로직 & 분석 오버레이 ========
+let viewMode = "stack"; // "stack" | "deaths" | "injuries"
+const btnStack    = document.getElementById("btnStack");
+const btnDeaths   = document.getElementById("btnDeaths");
+const btnInjuries = document.getElementById("btnInjuries");
+
+btnStack.onclick    = () => { viewMode="stack";    setPressed(btnStack, [btnDeaths, btnInjuries]); applyView(); };
+btnDeaths.onclick   = () => { viewMode="deaths";  setPressed(btnDeaths,[btnStack, btnInjuries]);  applyView(); };
+btnInjuries.onclick = () => { viewMode="injuries";setPressed(btnInjuries,[btnStack, btnDeaths]);  applyView(); };
+
+function setPressed(on, offs){
+  on.setAttribute("aria-pressed","true");
+  offs.forEach(b => b.setAttribute("aria-pressed","false"));
+}
+
+/* 오버레이 레이어 */
+const overlayG = g.append("g").attr("class","overlay");
+
+/* 간단 3년 이동평균 */
+function movingAvg(arr, k=3){
+  return arr.map((_,i) => {
+    const s=Math.max(0,i-k+1), e=i+1;
+    const slice = arr.slice(s,e);
+    return slice.reduce((a,b)=>a+b,0)/slice.length;
+  });
+}
+
+/* 선택 상태에 따라 불투명도/스트로크 조정 + 분석 오버레이 갱신 */
+function applyView(){
+  const strong = { deaths: 0.95, injuries: 0.85 };
+  const faded  = 0.18;
+
+  paths.each(function(d){
+    const key = d.key;
+    const sel = d3.select(this);
+    let opacity = strong[key];
+    let stroke  = "none";
+    let sw      = 0;
+
+    if (viewMode === "deaths"   && key !== "deaths")   opacity = faded;
+    if (viewMode === "injuries" && key !== "injuries") opacity = faded;
+
+    if ((viewMode==="deaths" && key==="deaths") ||
+        (viewMode==="injuries" && key==="injuries")){
+      stroke = "#ffffff55"; sw = 1.2;
+    }
+
+    sel.attr("opacity", opacity)
+       .attr("stroke", stroke)
+       .attr("stroke-width", sw);
+  });
+
+  // 분석 오버레이 업데이트
+  overlayG.selectAll("*").remove();
+  if (viewMode === "stack") return;
+
+  drawAnalyticOverlay(viewMode); // 'deaths' 또는 'injuries'
+}
+
+/* 분석 오버레이: 피크, 최대 Δ, 3년 이동평균 */
+function drawAnalyticOverlay(key){
+  const vals = data.map(d => d[key]);
+
+  // 1) 피크(최대) 지점
+  const maxVal = d3.max(vals);
+  const maxIdx = vals.findIndex(v => v === maxVal);
+  const maxYear = years[maxIdx];
+
+  // 2) 전년 대비 변화(Δ) – 절대변화량이 가장 큰 연도
+  const diffs = vals.map((v,i) => i===0 ? 0 : v - vals[i-1]);
+  const maxChangeIdx = d3.greatestIndex(diffs, d => Math.abs(d)); // 가장 큰 절대 변화
+  const changeVal = diffs[maxChangeIdx];
+  const changeYear = years[maxChangeIdx];
+
+  // 3) 3년 이동평균 (점선)
+  const ma = movingAvg(vals, 3);
+
+  // 기준 색
+  const baseColor = (key === "deaths") ? "var(--death)" : "var(--injury)";
+  const strokeMA  = "#ffffff88";
+  const strokeLine= "#ffffffaa";
+
+  // 라인 제너레이터 (값 단일)
+  const line = d3.line()
+    .x((_,i) => x(years[i]))
+    .y((v)   => y(v))
+    .curve(d3.curveMonotoneX);
+
+  // (a) 값 라인 (얇은 흰 선)
+  overlayG.append("path")
+    .datum(vals)
+    .attr("fill","none")
+    .attr("stroke", strokeLine)
+    .attr("stroke-width", 1.2)
+    .attr("d", line)
+    .attr("opacity", 0.8);
+
+  // (b) 3년 이동평균 (점선)
+  overlayG.append("path")
+    .datum(ma)
+    .attr("fill","none")
+    .attr("stroke", strokeMA)
+    .attr("stroke-width", 1.4)
+    .attr("stroke-dasharray","5,4")
+    .attr("d", line)
+    .attr("opacity", 0.9);
+
+  // (c) 피크 마커 + 라벨
+  overlayG.append("circle")
+    .attr("cx", x(maxYear))
+    .attr("cy", y(maxVal))
+    .attr("r", 3.5)
+    .attr("fill", baseColor)
+    .attr("stroke","#fff")
+    .attr("stroke-width",1);
+
+  overlayG.append("text")
+    .attr("class","annot")
+    .attr("x", x(maxYear))
+    .attr("y", y(maxVal) - 8)
+    .attr("text-anchor","middle")
+    .text(`최대 ${maxYear}년 · ${d3.format(",d")(maxVal)}명`);
+
+  // (d) 최대 변화(Δ) 라벨 (해당 연도의 점과 이전 점을 연결하여 중앙에 표기)
+  if (maxChangeIdx > 0) {
+    const x1 = x(years[maxChangeIdx-1]), y1 = y(vals[maxChangeIdx-1]);
+    const x2 = x(changeYear),             y2 = y(vals[maxChangeIdx]);
+    const cx = (x1 + x2)/2, cy = (y1 + y2)/2;
+
+    overlayG.append("line")
+      .attr("x1", x1).attr("y1", y1)
+      .attr("x2", x2).attr("y2", y2)
+      .attr("stroke", baseColor)
+      .attr("stroke-width", 1)
+      .attr("opacity", 0.8);
+
+    const pct = (vals[maxChangeIdx-1] === 0) ? null
+               : (changeVal / vals[maxChangeIdx-1]) * 100;
+    const sign = changeVal>0 ? "+" : "";
+    const lbl  = pct==null
+      ? `Δ ${sign}${d3.format(",d")(changeVal)}명`
+      : `Δ ${sign}${d3.format(",d")(changeVal)}명 (${sign}${pct.toFixed(1)}%)`;
+
+    overlayG.append("text")
+      .attr("class","annot")
+      .attr("x", cx)
+      .attr("y", cy - 8)
+      .attr("text-anchor","middle")
+      .text(lbl);
+  }
+
+  // (e) 작은 점들(선택 계층만)
+  overlayG.selectAll("circle.dot")
+    .data(vals.map((v,i)=>({v, i})))
+    .join("circle")
+      .attr("class","dot")
+      .attr("cx", d => x(years[d.i]))
+      .attr("cy", d => y(d.v))
+      .attr("r", 2.2)
+      .attr("fill", baseColor)
+      .attr("opacity", .9);
+}
+
+// ======== 실시간 표시(뷰포트 트리거) + 애니메이션 ========
+let hasDrawn = false;
+
+function drawAreas() {
+  if (hasDrawn) return;
+  clip.transition()
+    .duration(900)
+    .ease(d3.easeCubicOut)
+    .attr("y", 0)
+    .attr("height", innerH);
+  hasDrawn = true;
+  applyView(); // 초기 상태 반영 + 오버레이
+}
+
+function resetAreas() {
+  if (!hasDrawn) return;
+  clip.interrupt()
+    .attr("y", innerH)
+    .attr("height", 0);
+  focus.style("display","none");
+  tip.style("opacity", 0);
+  hasDrawn = false;
+}
+
+// 관찰 대상은 svg
+const target = svg.node();
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const r = entry.intersectionRatio;
+    if (r >= 0.25 && !hasDrawn) drawAreas();
+    else if (r === 0 && hasDrawn) resetAreas();
+  });
+}, { root: null, threshold: [0, 0.25] });
+io.observe(target);
+
+// 빠른 스크롤 보강
+let rafId = null;
+function onScrollCheck() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    const vh = window.innerHeight;
+    const rect = target.getBoundingClientRect();
+    const out = (rect.bottom <= 0) || (rect.top >= vh);
+    if (out && hasDrawn) resetAreas();
+    rafId = null;
+  });
+}
+window.addEventListener("scroll", onScrollCheck, { passive: true });
+window.addEventListener("resize", onScrollCheck);
+
+// 초기에도 보이면 즉시 그리기
+drawAreas();
+</script>
+</body>
+</html>

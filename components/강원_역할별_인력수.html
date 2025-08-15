@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>D3 - 스크롤 트리거 (투명 배경, 다크모드 최적화)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root {
+    --bg: transparent;
+    --axis: #ccc;      /* 축 색상 (밝게) */
+    --grid: #444;      /* 격자선 (어두운 회색) */
+    --bar:  #90caf9;   /* 막대 색상 */
+  }
+  html, body { margin:0; padding:12px; background:var(--bg); }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", Arial, sans-serif; color: #f5f5f5; }
+
+  /* 레이아웃 */
+  .grid  { display:grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); gap:16px; }
+  .panel { background:transparent; border:none; border-radius:0; padding:10px 12px 8px; box-shadow:none; }
+
+  /* 패널 헤더 */
+  .title { font-weight:600; margin:2px 0 8px 2px; font-size:14px; color:#f5f5f5; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  /* Replay 버튼 제거: 관련 스타일과 요소 없음 */
+
+  /* 축/격자/막대 디자인 */
+  .axis path, .axis line { stroke:var(--axis); }
+  .axis text { fill: #f5f5f5; }  /* 축 레이블 색상 */
+  .gridlines line { stroke: var(--grid); }
+  .bar { fill: var(--bar); opacity: 0.92; }
+
+  /* 범례 */
+  .legend text { fill:#273142; font-size:12px; }
+  .legend .bg { fill: rgba(255,255,255,0.85); stroke: #d6dbe3; rx:8; ry:8; }
+
+  /* 툴팁 */
+  .tooltip { position: fixed; pointer-events: none; background: rgba(0,0,0,0.9); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px; line-height:1.4; z-index:9999; }
+</style>
+</head>
+<body>
+<div id="chart" class="grid"></div>
+<div id="tooltip" class="tooltip" style="opacity:0;"></div>
+
+<script>
+// ===== Streamlit에서 치환됨 =====
+const raw = __DATA_JSON__;
+
+const labelMap = {
+  whol_mnpw_cnt: "동원 인력(합계)",
+  mblz_policeo_cnt: "경찰 동원",
+  mblz_sold_cnt: "군 병력 동원",
+  mblz_gnrl_ocpt_nope: "일반직 동원",
+  etc_mblz_nope: "기타 동원",
+  mblz_ffpwr_cnt: "소방 인력 동원",
+};
+const lineCols = Object.keys(labelMap).filter(k => k !== "whol_mnpw_cnt");
+
+const groups = d3.group(raw, d => d.year);
+const years = Array.from(groups.keys()).sort((a,b) => a-b);
+
+const W=620, H=320, M={top:28, right:56, bottom:40, left:48};
+const innerW = W - M.left - M.right;
+const innerH = H - M.top - M.bottom;
+
+const color = d3.scaleOrdinal().domain(lineCols).range(d3.schemeTableau10);
+const tooltip = d3.select("#tooltip");
+const container = d3.select("#chart");
+
+years.forEach(year => {
+  const data = groups.get(year).map(d => ({
+    month: +d.month,
+    whol_mnpw_cnt: +(d.whol_mnpw_cnt||0),
+    mblz_policeo_cnt: +(d.mblz_policeo_cnt||0),
+    mblz_sold_cnt: +(d.mblz_sold_cnt||0),
+    mblz_gnrl_ocpt_nope: +(d.mblz_gnrl_ocpt_nope||0),
+    etc_mblz_nope: +(d.etc_mblz_nope||0),
+    mblz_ffpwr_cnt: +(d.mblz_ffpwr_cnt||0),
+  }));
+
+  const panel = container.append("div").attr("class","panel").attr("data-year", year);
+  const header = panel.append("div").attr("class","title");
+  header.append("span").text(`${year}년 월별 동원 인력(막대) & 지원지표(라인)`);
+  /* Replay 버튼 생성 부분 제거 */
+
+  const svg = panel.append("svg").attr("width", W).attr("height", H);
+  const g = svg.append("g").attr("transform", `translate(${M.left}, ${M.top})`);
+
+  const months = d3.range(1,13);
+  const x = d3.scaleBand().domain(months).range([0, innerW]).padding(0.18);
+  const y0 = d3.scaleLinear().domain([0, d3.max(data, d => d.whol_mnpw_cnt) || 1]).nice().range([innerH, 0]);
+  const y1Max = d3.max(lineCols, c => d3.max(data, d => d[c]||0)) || 1;
+  const y1 = d3.scaleLinear().domain([0, y1Max]).nice().range([innerH, 0]);
+
+  // 격자선
+  g.append("g")
+    .attr("class","gridlines")
+    .call(
+      d3.axisLeft(y0)
+        .ticks(5)
+        .tickSize(-innerW)
+        .tickFormat(() => "")
+    )
+    .call(g => g.select(".domain").remove());
+
+  // x축
+  g.append("g")
+    .attr("transform", `translate(0, ${innerH})`)
+    .call(d3.axisBottom(x).tickValues(months).tickFormat(d => String(d).padStart(2,"0")))
+    .call(g => g.selectAll("text").style("font-size","12px").attr("fill", "#f5f5f5"));
+
+  // y축(왼쪽/오른쪽)
+  g.append("g").attr("class","axis").call(d3.axisLeft(y0).ticks(5).tickPadding(6))
+    .call(g => g.selectAll("text").style("font-size","12px").attr("fill", "#f5f5f5"));
+  g.append("g").attr("class","axis").attr("transform", `translate(${innerW},0)`)
+    .call(d3.axisRight(y1).ticks(5).tickPadding(6))
+    .call(g => g.selectAll("text").style("font-size","12px").attr("fill", "#f5f5f5"));
+
+  const barsG  = g.append("g").attr("class","bars");
+  const linesG = g.append("g").attr("class","lines");
+  const dotsG  = g.append("g").attr("class","dots");
+
+  // 라인 범례
+  const items = ["whol_mnpw_cnt", ...lineCols.filter(c => d3.sum(data, d => d[c]||0) > 0)];
+  const legend = g.append("g").attr("class","legend");
+  const itemH = 18, pad = 8;
+  const temp = legend.append("g").attr("opacity", 0);
+  let maxW = 0;
+  items.forEach(k => {
+    const t = temp.append("text").text(labelMap[k] || k).attr("font-size", 12);
+    maxW = Math.max(maxW, t.node().getBBox().width);
+  });
+  temp.remove();
+  const boxW = maxW + 48, boxH = pad*2 + itemH * items.length;
+  const boxX = innerW - boxW - 10, boxY = 0;
+  legend.append("rect").attr("class","bg").attr("x", boxX).attr("y", boxY).attr("width", boxW).attr("height", boxH);
+  items.forEach((k,i) => {
+    const yy = boxY + pad + i*itemH + 12;
+    const swatch = (k === "whol_mnpw_cnt") ? "#90caf9" : color(k);
+    legend.append("rect").attr("x", boxX + 10).attr("y", yy-9).attr("width", 14).attr("height", 14).attr("fill", swatch);
+    legend.append("text").attr("x", boxX + 30).attr("y", yy).attr("dominant-baseline","middle").text(labelMap[k] || k).attr("fill","#f5f5f5");
+  });
+
+  function draw() {
+    barsG.selectAll("rect")
+      .data(data)
+      .join("rect")
+        .attr("class","bar")
+        .attr("x", d => x(d.month))
+        .attr("width", x.bandwidth())
+        .attr("y", innerH)
+        .attr("height", 0)
+      .on("mousemove", (event,d) => {
+        tooltip.style("opacity", 1)
+               .style("left", (event.clientX + 12) + "px")
+               .style("top",  (event.clientY - 12) + "px")
+               .html(`<b>${year}년 ${String(d.month).padStart(2,'0')}월</b><br/>동원 인력: <b>${d.whol_mnpw_cnt.toLocaleString()}</b>`);
+      })
+      .on("mouseleave", () => tooltip.style("opacity", 0))
+      .transition()
+        .duration(800).ease(d3.easeCubicOut)
+        .attr("y", d => y0(d.whol_mnpw_cnt))
+        .attr("height", d => innerH - y0(d.whol_mnpw_cnt));
+
+    lineCols.forEach((col,i) => {
+      const sum = d3.sum(data, d => d[col] || 0);
+      if (!sum) return;
+
+      const path = linesG.append("path")
+        .datum(data)
+        .attr("fill","none")
+        .attr("stroke", color(col))
+        .attr("stroke-width", 2)
+        .attr("d", d3.line()
+              .x(d => x(d.month) + x.bandwidth()/2)
+              .y(d => y1(d[col] || 0))
+              .curve(d3.curveMonotoneX)
+          );
+
+      const L = path.node().getTotalLength();
+      path.attr("stroke-dasharray", `${L} ${L}`)
+          .attr("stroke-dashoffset", L)
+          .transition()
+            .delay(200 + i*250)
+            .duration(1200)
+            .ease(d3.easeCubic)
+            .attr("stroke-dashoffset", 0);
+
+      dotsG.selectAll(`circle.dot-${col}`)
+        .data(data)
+        .join("circle")
+          .attr("class", `dot dot-${col}`)
+          .attr("cx", d => x(d.month) + x.bandwidth()/2)
+          .attr("cy", d => y1(d[col] || 0))
+          .attr("r", 3)
+          .attr("fill", color(col))
+          .attr("opacity", 0)
+          .on("mousemove", (event, d) => {
+            tooltip.style("opacity", 1)
+                   .style("left", (event.clientX + 12) + "px")
+                   .style("top",  (event.clientY - 12) + "px")
+                   .html(`<b>${year}년 ${String(d.month).padStart(2,'0')}월</b><br/>${labelMap[col]}: <b>${(d[col]||0).toLocaleString()}</b>`);
+          })
+          .on("mouseleave", () => tooltip.style("opacity", 0))
+          .transition()
+            .delay(200 + i*250 + 900)
+            .duration(400)
+            .attr("opacity", 1);
+    });
+
+    panel.node()._drawn = true;
+  }
+
+  function reset() {
+    g.selectAll(".bars *").interrupt().remove();
+    g.selectAll(".lines *").interrupt().remove();
+    g.selectAll(".dots *").interrupt().remove();
+    panel.node()._drawn = false;
+  }
+
+  panel.node()._draw = draw;
+  panel.node()._reset = reset;
+});
+
+const panels = document.querySelectorAll(".panel");
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const node = entry.target;
+    const ratio = entry.intersectionRatio;
+    if (ratio >= 0.25 && !node._drawn) node._draw?.();
+    if (ratio === 0 && node._drawn) node._reset?.();
+  });
+}, { root: null, rootMargin: "0px", threshold: [0, 0.25] });
+panels.forEach(p => io.observe(p));
+
+let rafId = null;
+function onScrollCheck() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    const vh = window.innerHeight;
+    panels.forEach(p => {
+      const rect = p.getBoundingClientRect();
+      const out = (rect.bottom <= 0) || (rect.top >= vh);
+      if (out && p._drawn) p._reset?.();
+    });
+    rafId = null;
+  });
+}
+window.addEventListener('scroll', onScrollCheck, { passive: true });
+window.addEventListener('resize', onScrollCheck);
+</script>
+</body>
+</html>
