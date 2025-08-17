@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>화재 원인 Treemap</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #121212;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .title {
+      margin: 15px 0;
+      color: white;
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .treemap-container {
+      position: relative;
+      border-radius: 12px;
+    }
+
+    .node {
+      position: absolute;
+      box-sizing: border-box;
+      border-radius: 6px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4px;
+      overflow: hidden;
+
+      opacity: 0;
+      transform: scale(0.8);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .node:hover {
+      transform: scale(1.04);
+      z-index: 2;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+    }
+
+    @keyframes fadeInZoom {
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .label {
+      white-space: pre-wrap;
+      word-break: break-word;
+      text-align: center;
+      line-height: 1.2;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="title">📌 발화 원인별 발생건수</h1>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const data = {
+      "name": "화재원인",
+      "children": [
+        { "name": "담뱃불", "value": 167 },
+        { "name": "미상", "value": 113 },
+        { "name": "쓰레기소각장", "value": 61 },
+        { "name": "논/밭두렁", "value": 51 },
+        { "name": "입산자실화", "value": 37 },
+        { "name": "군경사격장", "value": 22 },
+        { "name": "쓰레기소각장에서확대", "value": 13 },
+        { "name": "건물", "value": 7 },
+        { "name": "성묘객", "value": 5 },
+        { "name": "논/밭두렁으로부터확대", "value": 5 },
+        { "name": "모닥불", "value": 4 },
+        { "name": "자동차", "value": 3 },
+        { "name": "축사/비닐하우스", "value": 2 },
+        { "name": "취사행위", "value": 2 },
+        { "name": "성묘객으로부터화재", "value": 2 },
+        { "name": "기타 입산자실화", "value": 1 },
+        { "name": "건물로부터확대", "value": 1 }
+      ]
+    };
+
+    const width = 960;
+    const height = 520;
+
+    const root = d3.hierarchy(data)
+      .sum(d => d.value)
+      .sort((a, b) => b.value - a.value);
+
+    d3.treemap()
+      .size([width, height])
+      .paddingInner(2)(root);
+
+    const leaves = root.leaves();
+    const maxValue = d3.max(leaves, d => d.value);
+    const minValue = d3.min(leaves, d => d.value);
+
+    const color = d3.scaleSequential()
+      .domain([Math.log(minValue), Math.log(maxValue)])
+      .interpolator(t => d3.interpolateReds(t * 0.8 + 0.15));
+
+    const container = d3.select("body")
+      .append("div")
+      .attr("class", "treemap-container")
+      .style("width", `${width}px`)
+      .style("height", `${height}px`)
+      .attr("id", "treemap-container");
+
+    const node = container.selectAll("div")
+      .data(leaves)
+      .enter()
+      .append("div")
+      .attr("class", "node")
+      .style("left", d => `${d.x0}px`)
+      .style("top", d => `${d.y0}px`)
+      .style("width", d => `${d.x1 - d.x0}px`)
+      .style("height", d => `${d.y1 - d.y0}px`)
+      .style("background", d => color(Math.log(d.value)))
+      .attr("title", d => `${d.data.name}: ${d.value}건`);
+
+    node.append("div")
+      .attr("class", "label")
+      .style("font-size", d => {
+        const size = Math.min(d.x1 - d.x0, d.y1 - d.y0) / 5;
+        return `${Math.min(size, 16)}px`;
+      })
+      .style("color", d => {
+        const rgb = d3.color(color(Math.log(d.value)));
+        const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+        return brightness > 160 ? "#222" : "#fff";
+      })
+      .text(d => `${d.data.name}\n(${d.value})`);
+
+    // IntersectionObserver: 트리맵이 보이면 애니메이션 부여
+    const panel = document.getElementById("treemap-container");
+    const nodes = document.querySelectorAll(".node");
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          nodes.forEach((n, i) => {
+            n.style.animation = `fadeInZoom 0.6s ease-out ${i * 30}ms forwards`;
+          });
+        } else {
+          nodes.forEach(n => {
+            n.style.animation = "none"; // reset
+            n.offsetHeight; // 강제 리플로우
+            n.style.animation = null;
+          });
+        }
+      });
+    }, { threshold: 0.3 });
+
+    observer.observe(panel);
+  </script>
+</body>
+</html>

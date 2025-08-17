@@ -16,6 +16,27 @@ st.set_page_config(
     layout = "wide",
 )
 
+def prep_treemap_ignition_cause(d: pd.DataFrame, col: str = "IGTN_CS_NM"):
+    # Step 1: 값 정리 및 결측 대체
+    series = d[col].fillna("기타").astype(str).str.strip().replace({"": "기타", "undefined": "기타"})
+
+    # Step 2: 카운트 계산
+    counts = series.value_counts().to_dict()
+
+    # Step 3: 필터링 + 구조화
+    children = [
+        {"name": name, "value": int(count)} for name, count in counts.items()
+    ]
+
+    # Step 4: JSON 변환
+    tree_json = {
+        "name": "화재원인",
+        "children": children
+    }
+    data_json = json.dumps(tree_json, ensure_ascii=False, indent=2)
+
+    return data_json
+
 def prep_casualty_stack_area(
     df: pd.DataFrame,
     ymd_col: str = "OCRN_YMD",
@@ -589,8 +610,18 @@ with center:
         .replace("__DATA_CAUSE__",  json.dumps(data_cause,  ensure_ascii=False))
     )
 
-    components.html(html_filled, height=450, scrolling=False)
-    
+    components.html(html_filled, height=415, scrolling=False)
+
+    data_json = prep_treemap_ignition_cause(df_gangwon, col="IGTN_CS_NM")
+    html_src = Path("../components/강원_화재요인별_발생수.html").read_text(encoding="utf-8")
+    html_filled = html_src.replace("__DATA_JSON__", json.dumps(data_json, ensure_ascii=False))
+
+# 렌더링
+components.html(html_filled, height=600, scrolling=False)
+
+left, center, right = st.columns([1, 2, 1]) 
+
+with center:
     st.markdown('📍 **지역별 비교**')
     st.markdown(
         """
@@ -670,7 +701,6 @@ with center:
     )
     
     merged, records = prep_casualty_stack_area(df_gangwon)
-
     html_src = Path("../components/강원_상태별_사상자수.html").read_text(encoding="utf-8")
     html_filled = html_src.replace("__DATA_JSON__", json.dumps(records, ensure_ascii=False))
 
