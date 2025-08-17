@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>지역별 평균 화재 피해 규모</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      background-color: #111;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #fff;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h2 {
+      margin: 20px;
+      color: white;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: rgba(0,0,0,0.85);
+      color: white;
+      padding: 8px 10px;
+      font-size: 13px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h2>📍 지역별 평균 화재 피해 규모 (Bubble Chart)</h2>
+  <svg id="bubble" width="900" height="600"></svg>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    // 여기에 Streamlit에서 Python → JS로 데이터 치환 (예시용)
+    const data = __DATA_JSON__;  // ← Python에서 JSON.stringify(area_avg_by_region)
+
+    const svg = d3.select("#bubble");
+    const width = +svg.attr("width");
+    const height = +svg.attr("height");
+
+    const tooltip = d3.select("#tooltip");
+
+    const color = d3.scaleSequential(d3.interpolateReds)
+      .domain(d3.extent(data, d => d['피해면적_합계']));
+
+    const size = d3.scaleSqrt()
+      .domain(d3.extent(data, d => d['평균_화재_규모']))
+      .range([10, 60]);
+
+    const simulation = d3.forceSimulation(data)
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("charge", d3.forceManyBody().strength(1))
+      .force("collision", d3.forceCollide().radius(d => size(d['평균_화재_규모']) + 4))
+      .stop();
+
+    // 200번 미리 시뮬레이션 돌림
+    for (let i = 0; i < 200; ++i) simulation.tick();
+
+    const nodes = svg.selectAll("circle")
+      .data(data)
+      .enter()
+      .append("circle")
+      .attr("cx", d => d.x)
+      .attr("cy", d => d.y)
+      .attr("r", d => size(d['평균_화재_규모']))
+      .attr("fill", d => color(d['피해면적_합계']))
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1)
+      .on("mouseover", (event, d) => {
+        tooltip
+          .html(`
+            <strong>${d.GRNDs_SGG_NM}</strong><br>
+            🔥 피해면적: ${d3.format(",.2f")(d['피해면적_합계'])} ha<br>
+            🚨 화재건수: ${d3.format(",d")(d['화재건수'])}건<br>
+            📏 평균피해: ${d3.format(",.2f")(d['평균_화재_규모'])} ha`)
+          .style("opacity", 1);
+      })
+      .on("mousemove", event => {
+        tooltip
+          .style("left", (event.pageX + 10) + "px")
+          .style("top", (event.pageY - 28) + "px");
+      })
+      .on("mouseleave", () => {
+        tooltip.style("opacity", 0);
+      });
+
+    // 텍스트 레이블 (선택사항)
+    svg.selectAll("text")
+      .data(data)
+      .enter()
+      .append("text")
+      .attr("x", d => d.x)
+      .attr("y", d => d.y + 4)
+      .text(d => d.GRNDs_SGG_NM)
+      .attr("font-size", "10px")
+      .attr("fill", "#fff")
+      .attr("text-anchor", "middle");
+  </script>
+</body>
+</html>

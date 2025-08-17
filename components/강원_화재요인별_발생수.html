@@ -72,28 +72,29 @@
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script>
-    const data = {
-      "name": "화재원인",
-      "children": [
-        { "name": "담뱃불", "value": 167 },
-        { "name": "미상", "value": 113 },
-        { "name": "쓰레기소각장", "value": 61 },
-        { "name": "논/밭두렁", "value": 51 },
-        { "name": "입산자실화", "value": 37 },
-        { "name": "군경사격장", "value": 22 },
-        { "name": "쓰레기소각장에서확대", "value": 13 },
-        { "name": "건물", "value": 7 },
-        { "name": "성묘객", "value": 5 },
-        { "name": "논/밭두렁으로부터확대", "value": 5 },
-        { "name": "모닥불", "value": 4 },
-        { "name": "자동차", "value": 3 },
-        { "name": "축사/비닐하우스", "value": 2 },
-        { "name": "취사행위", "value": 2 },
-        { "name": "성묘객으로부터화재", "value": 2 },
-        { "name": "기타 입산자실화", "value": 1 },
-        { "name": "건물로부터확대", "value": 1 }
-      ]
-    };
+    const data = __DATA_JSON__; // 서버에서 치환된 JSON 데이터
+    // const data = {
+    //   "name": "화재원인",
+    //   "children": [
+    //     { "name": "담뱃불", "value": 167 },
+    //     { "name": "미상", "value": 113 },
+    //     { "name": "쓰레기소각장", "value": 61 },
+    //     { "name": "논/밭두렁", "value": 51 },
+    //     { "name": "입산자실화", "value": 37 },
+    //     { "name": "군경사격장", "value": 22 },
+    //     { "name": "쓰레기소각장에서확대", "value": 13 },
+    //     { "name": "건물", "value": 7 },
+    //     { "name": "성묘객", "value": 5 },
+    //     { "name": "논/밭두렁으로부터확대", "value": 5 },
+    //     { "name": "모닥불", "value": 4 },
+    //     { "name": "자동차", "value": 3 },
+    //     { "name": "축사/비닐하우스", "value": 2 },
+    //     { "name": "취사행위", "value": 2 },
+    //     { "name": "성묘객으로부터화재", "value": 2 },
+    //     { "name": "기타 입산자실화", "value": 1 },
+    //     { "name": "건물로부터확대", "value": 1 }
+    //   ]
+    // };
 
     const width = 960;
     const height = 520;
@@ -112,7 +113,7 @@
 
     const color = d3.scaleSequential()
       .domain([Math.log(minValue), Math.log(maxValue)])
-      .interpolator(t => d3.interpolateReds(t * 0.8 + 0.15));
+      .interpolator(t => d3.interpolateReds(t * 0.7 + 0.15))
 
     const container = d3.select("body")
       .append("div")
