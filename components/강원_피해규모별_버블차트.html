@@ -6,9 +6,8 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body {
-      background-color: #111;
+      background-color: transparent;
       font-family: 'Noto Sans KR', sans-serif;
-      color: #fff;
       margin: 0;
       display: flex;
       flex-direction: column;
@@ -16,8 +15,9 @@
     }
 
     h2 {
-      margin: 20px;
+      margin: 12px 0 4px 0;
       color: white;
+      font-size: 20px;
     }
 
     .tooltip {
@@ -35,13 +35,12 @@
   </style>
 </head>
 <body>
-  <h2>📍 지역별 평균 화재 피해 규모 (Bubble Chart)</h2>
+  <h2>📌 지역별 평균 화재 피해 규모</h2>
   <svg id="bubble" width="900" height="600"></svg>
   <div id="tooltip" class="tooltip"></div>
 
   <script>
-    // 여기에 Streamlit에서 Python → JS로 데이터 치환 (예시용)
-    const data = __DATA_JSON__;  // ← Python에서 JSON.stringify(area_avg_by_region)
+    const data = __DATA_JSON__;
 
     const svg = d3.select("#bubble");
     const width = +svg.attr("width");
@@ -49,32 +48,35 @@
 
     const tooltip = d3.select("#tooltip");
 
-    const color = d3.scaleSequential(d3.interpolateReds)
-      .domain(d3.extent(data, d => d['피해면적_합계']));
+    // 🔥 log10 스케일 기반 색상 스케일 정의
+    const color = d3.scaleSequential()
+      .domain(d3.extent(data, d => Math.log10(d['피해면적_합계'] + 1)))
+      .interpolator(d3.interpolateYlOrRd);  // 더 구분감 있는 색상
 
     const size = d3.scaleSqrt()
       .domain(d3.extent(data, d => d['평균_화재_규모']))
-      .range([10, 60]);
+      .range([20, 90]);
 
-    const simulation = d3.forceSimulation(data)
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("charge", d3.forceManyBody().strength(1))
-      .force("collision", d3.forceCollide().radius(d => size(d['평균_화재_규모']) + 4))
-      .stop();
+    // 초기 위치: 바깥에서 안으로
+    data.forEach(d => {
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = 600 + Math.random() * 200;
+      d.x = width / 2 + Math.cos(angle) * radius;
+      d.y = height / 2 + Math.sin(angle) * radius;
+    });
 
-    // 200번 미리 시뮬레이션 돌림
-    for (let i = 0; i < 200; ++i) simulation.tick();
-
-    const nodes = svg.selectAll("circle")
+    const node = svg.selectAll("circle")
       .data(data)
       .enter()
       .append("circle")
-      .attr("cx", d => d.x)
-      .attr("cy", d => d.y)
       .attr("r", d => size(d['평균_화재_규모']))
-      .attr("fill", d => color(d['피해면적_합계']))
+      .attr("fill", d => color(Math.log10(d['피해면적_합계'] + 1)))
       .attr("stroke", "#fff")
       .attr("stroke-width", 1)
+      .call(d3.drag()
+        .on("start", dragStarted)
+        .on("drag", dragged)
+        .on("end", dragEnded))
       .on("mouseover", (event, d) => {
         tooltip
           .html(`
@@ -93,17 +95,52 @@
         tooltip.style("opacity", 0);
       });
 
-    // 텍스트 레이블 (선택사항)
-    svg.selectAll("text")
+    const label = svg.selectAll("text")
       .data(data)
       .enter()
       .append("text")
-      .attr("x", d => d.x)
-      .attr("y", d => d.y + 4)
       .text(d => d.GRNDs_SGG_NM)
-      .attr("font-size", "10px")
-      .attr("fill", "#fff")
-      .attr("text-anchor", "middle");
+      .attr("font-size", "11px")
+      .attr("text-anchor", "middle")
+      .attr("fill", d => {
+        const lab = d3.lab(color(Math.log10(d['피해면적_합계'] + 1)));
+        return lab.l > 60 ? "#000" : "#fff";
+      });
+
+    // 💥 빠르고 부드럽게 중앙으로 모이는 힘
+    const simulation = d3.forceSimulation(data)
+      .alpha(1)
+      .alphaDecay(0.05)
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("x", d3.forceX(width / 2).strength(0.3))
+      .force("y", d3.forceY(height / 2).strength(0.3))
+      .force("charge", d3.forceManyBody().strength(5))
+      .force("collision", d3.forceCollide().radius(d => size(d['평균_화재_규모']) + 2))
+      .on("tick", () => {
+        node
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
+        label
+          .attr("x", d => d.x)
+          .attr("y", d => d.y + 4);
+      });
+
+    function dragStarted(event, d) {
+      if (!event.active) simulation.alpha(0.3).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+
+    function dragged(event, d) {
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+
+    function dragEnded(event, d) {
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null;
+      d.fy = null;
+    }
   </script>
 </body>
 </html>

@@ -16,6 +16,24 @@ st.set_page_config(
     layout = "wide",
 )
 
+
+# 🔧 전처리 함수 정의
+def prep_bubble_data(d: pd.DataFrame) -> list[dict]:
+    d = d.dropna(subset=["피해면적_합계"])
+
+    area_avg_by_region = (
+        d.groupby("GRNDS_SGG_NM")["피해면적_합계"]
+        .agg(["sum", "count"])
+        .rename(columns={"sum": "피해면적_합계", "count": "화재건수"})
+        .assign(평균_화재_규모=lambda x: x["피해면적_합계"] / x["화재건수"])
+        .reset_index()
+    )
+
+    # 컬럼명 JS용으로 정제
+    area_avg_by_region.rename(columns={"GRNDS_SGG_NM": "GRNDs_SGG_NM"}, inplace=True)
+
+    return area_avg_by_region.to_dict(orient="records")
+
 def prep_treemap_ignition_cause(d: pd.DataFrame, col: str = "IGTN_CS_NM"):
     series = d[col].fillna("미상").astype(str).str.strip().replace({"": "미상", "undefined": "미상"})
     counts = series.value_counts().to_dict()
@@ -637,6 +655,15 @@ with center:
     html_filled = html_src.replace("__DATA_JSON__", data_json)
 
     components.html(html_filled, height=560, scrolling=False)
+
+    # 🔄 전처리 함수 호출
+    data_json = prep_bubble_data(pd.read_csv("../data/burnt_area_merged_16-22.csv"))
+
+    html_src = Path("../components/강원_피해규모별_버블차트.html").read_text(encoding="utf-8")
+    html_filled = html_src.replace("__DATA_JSON__", json.dumps(data_json, ensure_ascii=False))
+
+    # 📊 렌더링
+    components.html(html_filled, height=600, scrolling=False)
 
     st.subheader("📊 역할별 인력수")
     st.markdown(
