@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>산불 타임라인</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      margin: 5px;
+      background-color: transparent;
+      color: #ffffff;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .svg-container {
+      text-align: center;
+      width: 100%;
+    }
+
+    svg {
+      display: inline-block;
+    }
+
+    .axis line,
+    .axis path {
+      stroke: #ffffff;
+    }
+
+    .tick text {
+      fill: #ffffff;
+    }
+
+    svg text.icon {
+      font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+    }
+
+    .fireworks {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      animation: explode 1s ease-out forwards;
+      pointer-events: none;
+    }
+
+    @keyframes explode {
+      0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+      }
+      30% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="svg-container">
+    <svg id="timeline" height="250"></svg>
+  </div>
+  <div id="fireworks" class="fireworks" style="display: none;">🎆🎉🎉🎉🎉🎇</div>
+
+  <script>
+    const labels = ["화재 발생", "신고 접수", "출동", "초기 진화", "완전 진화"];
+    const rawTimes = [
+      "2022-03-04 12:45:00",
+      "2022-03-04 12:45:26",
+      "2022-03-04 12:46:12",
+      "2022-03-04 12:51:19",
+      "2022-03-09 13:36:00"
+    ];
+    const times = rawTimes.map(d => new Date(d));
+
+    const svg = d3.select("#timeline");
+    const width = 1000;
+    const height = +svg.attr("height");
+    svg.attr("width", width);
+    const margin = { top: 30, right: 60, bottom: 60, left: 60 };
+
+    const customX = [
+      margin.left + 0,
+      margin.left + 180,
+      margin.left + 360,
+      margin.left + 560,
+      width - margin.right
+    ];
+
+    const xAxisScale = d3.scaleTime()
+      .domain([times[0], times[times.length - 1]])
+      .range([customX[0], customX[customX.length - 1]]);
+
+    svg.append("g")
+      .attr("class", "axis")
+      .attr("transform", `translate(0, ${height - margin.bottom})`)
+      .call(
+        d3.axisBottom(xAxisScale)
+          .ticks(d3.timeDay.every(1))
+          .tickFormat(d3.timeFormat("%m-%d %H:%M:%S"))
+      );
+
+    svg.append("line")
+      .attr("x1", customX[0])
+      .attr("x2", customX[customX.length - 1])
+      .attr("y1", height / 2)
+      .attr("y2", height / 2)
+      .attr("stroke", "#999")
+      .attr("stroke-width", 2);
+
+    svg.selectAll("circle")
+      .data(customX)
+      .enter()
+      .append("circle")
+      .attr("cx", d => d)
+      .attr("cy", height / 2)
+      .attr("r", 9)
+      .attr("fill", "#d9534f");
+
+    svg.selectAll(".event-label")
+      .data(labels)
+      .enter()
+      .append("text")
+      .attr("x", (_, i) => customX[i])
+      .attr("y", height / 2 - 45)
+      .attr("fill", "#ffffff")
+      .attr("font-size", "14px")
+      .attr("text-anchor", "middle")
+      .attr("font-weight", "bold")
+      .text(d => d);
+
+    svg.selectAll(".event-time")
+      .data(times)
+      .enter()
+      .append("text")
+      .attr("x", (_, i) => customX[i])
+      .attr("y", height / 2 + 28)
+      .attr("fill", "#ffffff")
+      .attr("font-size", "12px")
+      .attr("text-anchor", "middle")
+      .text(d => d3.timeFormat("%m-%d %H:%M:%S")(d));
+
+    const iconMap = ["🔥", "☎️", "🚒", "🧑🏻‍🚒"];
+    const fireIcon = svg.append("text")
+      .attr("class", "icon")
+      .attr("x", customX[0])
+      .attr("y", height / 2 - 18)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#ffffff")
+      .text(iconMap[0]);
+
+    const fireworks = document.getElementById("fireworks");
+
+    let hasPlayed = false;
+
+    function showFireworks() {
+      fireworks.style.display = "block";
+      fireworks.style.animation = "explode 1s ease-out forwards";
+
+      // 몇 초 후에 숨김
+      setTimeout(() => {
+        fireworks.style.display = "none";
+      }, 2000);
+    }
+
+    function startAnimation() {
+      if (hasPlayed) return;
+      hasPlayed = true;
+
+      let totalDelay = 0;
+      for (let i = 1; i < customX.length; i++) {
+        const prevTime = times[i - 1];
+        const currTime = times[i];
+        const deltaMS = currTime - prevTime;
+
+        const duration = (i <= 3)
+          ? deltaMS / 30
+          : 20000;
+
+        fireIcon.transition()
+          .delay(totalDelay)
+          .on("start", function() {
+            d3.select(this).text(iconMap[i - 1]);
+          })
+          .duration(duration)
+          .ease(d3.easeLinear)
+          .attr("x", customX[i])
+          .on("end", function() {
+            if (i === customX.length - 1) {
+              showFireworks();
+            }
+          });
+
+        totalDelay += duration;
+      }
+    }
+
+    function resetAnimation() {
+      fireIcon.interrupt()
+        .attr("x", customX[0])
+        .text(iconMap[0]);
+      hasPlayed = false;
+    }
+
+    const target = document.querySelector(".svg-container");
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.25) {
+          startAnimation();
+        } else {
+          resetAnimation();
+        }
+      });
+    }, {
+      threshold: [0, 0.25]
+    });
+
+    observer.observe(target);
+  </script>
+</body>
+</html>

@@ -722,9 +722,46 @@ with center:
     html_filled = html_src.replace("__DATA_JSON__", json.dumps(records, ensure_ascii=False))
 
     components.html(html_filled, height=440, scrolling=False)
+
+    st.subheader("📊 대형산불 화재 현황")
+    st.markdown(
+        """
+        <div style="margin-bottom: -50px; font-size: 16px;">
+            🔥 <strong>2022 강릉·동해 산불</strong>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+left, center, right = st.columns([1, 12, 1]) 
+with center:
+    components.html(load_html(Path("../components/강원_대형산불_현황.html")), height=250, scrolling=False)
+
+left, center, right = st.columns([1, 2, 1]) 
+with center:
+    st.markdown("""
+        이 시각화는 **2022년 3월 4일 강원도 강릉시 옥계면과 동해시 망상동에서 발생한 대형 산불**의 **발생부터 완전 진화까지의 과정을 시간 순으로 시각화**한 타임라인입니다.  
+        당시 강한 바람(최대 풍속 27m/s)과 건조한 날씨로 인해 급격히 확산되었으며, **이재민 334명, 피해 면적 3,967ha**(약 5,500축구장 크기)에 달하는 막대한 피해를 초래했습니다.
+
+        | 단계 | 설명 | 시간 | 아이콘 |
+        |------|------|------|--------|
+        | **화재 발생** | 옥계면 도직리 야산에서 최초 발화 | 03-04 12:45:00 | 🔥 |
+        | **신고 접수** | 119 신고 접수 | 03-04 12:45:26 | ☎️ |
+        | **출동** | 소방 및 산림청 헬기 등 긴급 출동 | 03-04 12:46:12 | 🚒 |
+        | **초기 진화** | 강풍으로 진화 어려움 속 부분 진화 시도 | 03-04 12:51:19 | 🧑🏻‍🚒 |
+        | **완전 진화** | 5일간의 진화작업 끝에 완전 진화 완료 | 03-09 13:36:00 | 🎉 |
+
+        **📌 주요 정보 요약**  
+        - **발생 일시**: 2022년 3월 4일 12시 45분  
+        - **완전 진화 시점**: 2022년 3월 9일 13시 36분  
+        - **피해 규모**: 주택 138채 소실, 시설물 264건 피해  
+        - **이재민**: 334명 발생  
+        - **특징**: 강풍으로 인해 강릉·동해 해안선을 따라 빠르게 확산, 고속도로 통제 및 대피령 발령
+        - **대응**: 소방청, 산림청, 군부대 등 총력 대응, 헬기 30대 투입, 인력 1,500명 이상 동원
+        """)
+
+
     
-
-
 # 페이지 Road
 time.sleep(1)  # 렌더링 안정성 위해 약간의 지연
 if overlay is not None:
