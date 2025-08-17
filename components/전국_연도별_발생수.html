@@ -27,7 +27,7 @@
   .axis path, .axis line { stroke:#d1d5db; }
   .grid line { stroke: var(--grid); }
   .bar { fill: var(--bar); }
-  .value { font-size:12px; fill:#374151; font-weight:700; }
+  .value { font-size:12px; fill:#fff; font-weight:700; }
   .tooltip {
     position:fixed; pointer-events:none; z-index:9999; opacity:0;
     background:rgba(0,0,0,0.82); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px;
@@ -38,10 +38,12 @@
 <body>
 <div class="panel" id="panel">
   <div class="head">
-    <h3> </h3>
+    <h3> 
+      <M id="titleText">🔥 연도별 화재 발생 현황(연도 기준)</M>
+    </h3>
     <div class="btns">
       <!-- Reset/Replay 버튼 제거 -->
-      <button id="sort">값기준</button>
+      <button id="sort">발생건수 기준</button>
     </div>
   </div>
   <div class="wrap">
@@ -141,19 +143,23 @@ function drawBars(seq=true) {
 
   const lbl = labelsG.selectAll("text.value").data(data, d => d.year);
   const lblEnter = lbl.enter().append("text")
-      .attr("class","value")
-      .attr("x", d => x(d.year) + x.bandwidth()/2)
-      .attr("y", innerH - 6)
-      .attr("text-anchor","middle")
-      .text("0");
+    .attr("class", "value")
+    .attr("x", d => x(d.year) + x.bandwidth() / 2)
+    .attr("y", innerH - 6)  // 아래에서 시작
+    .attr("text-anchor", "middle")
+    .text("0");
 
-  (seq ? lblEnter.transition().delay((_,i)=> i*120) : lblEnter.transition())
-      .duration(dur).ease(ease)
-      .attr("y", d => y(d.count) - 6)
-      .on("start", function(_,i){
-        const d = data[i];
-        tweenCount(d3.select(this), 0, d.count, dur);
-      });
+  (seq ? lblEnter.transition().delay((_, i) => i * 120) : lblEnter.transition())
+    .duration(dur).ease(ease)
+    .tween("text", function(d) {
+      const i = d3.interpolateNumber(0, d.count);
+      const yStart = innerH - 6;
+      const yEnd = y(d.count) - 6;
+      return function(t) {
+        this.textContent = d3.format(",d")(Math.round(i(t)));
+        this.setAttribute("y", yStart + (yEnd - yStart) * t);  // y도 함께 보간
+      };
+    });
 
   lbl.transition().duration(800)
      .attr("x", d => x(d.year) + x.bandwidth()/2)
@@ -175,10 +181,12 @@ document.getElementById("sort").addEventListener("click", (e) => {
   sortByValue = !sortByValue;
   if (sortByValue) {
     data.sort((a,b) => d3.descending(a.count, b.count));
-    e.target.textContent = "연도기준";
+    e.target.textContent = "연도 기준";
+    document.getElementById("titleText").textContent = "🔥 연도별 화재 발생 현황(발생건수 기준)";
   } else {
     data.sort((a,b) => d3.ascending(a.year, b.year));
-    e.target.textContent = "값기준";
+    e.target.textContent = "발생건수 기준";
+    document.getElementById("titleText").textContent = "🔥 연도별 화재 발생 현황(연도 기준)";
   }
   x.domain(data.map(d => d.year));
   d3.select(xAxisG.node()).transition().duration(600).call(d3.axisBottom(x));

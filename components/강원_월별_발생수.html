@@ -26,7 +26,7 @@
   .axis path, .axis line { stroke:var(--axis); }
   .grid line { stroke: var(--grid); }
   .bar { fill: var(--bar); }
-  .value { font-size:12px; fill:#273142; font-weight:700; }
+  .value { font-size:12px; fill:#fff; font-weight:700; }
   .tooltip {
     position:fixed; pointer-events:none; z-index:9999; opacity:0;
     background:rgba(0,0,0,0.82); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px;
@@ -69,24 +69,23 @@ svg.attr("viewBox", `0 0 ${W} ${H}`);
 const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
 
 // 스케일
-let x = d3.scaleBand().domain(data.map(d => d.month)).range([0, innerW]).padding(0.18);
-const maxY = d3.max(data, d => d.count) || 1;
+let x = d3.scaleBand().domain([12,1,2,3,4,5,6,7,8,9,10,11]).range([0, innerW]).padding(0.18);
+
+// 데이터도 월 순서에 맞게 정렬
+const orderedMonths = new Set([12,1,2,3,4,5,6,7,8,9,10,11]);
+const orderedData = [...orderedMonths].map(m => data.find(d => d.month===m) || {month:m, count:0});
+
+const maxY = d3.max(orderedData, d => d.count) || 1;
 const y = d3.scaleLinear().domain([0, maxY * 1.12]).nice().range([innerH, 0]);
 
 // 적절한 y축 틱 개수(겹침 방지)
 const yTicks = Math.max(3, Math.min(8, Math.floor(innerH / 60)));
 
-// 계절 배경 rects (월 단위 x좌표 사용)
 const seasons = [
-  // 겨울: 12월(별도), 1~2월
-  { name:"winter", x0: 12, x1: 12.999, label:"겨울" },
-  { name:"winter", x0:  1, x1:  2.999, label:"겨울" },
-  // 봄: 3~5
-  { name:"spring", x0:  3, x1:  5.999, label:"봄" },
-  // 여름: 6~8
-  { name:"summer", x0:  6, x1:  8.999, label:"여름" },
-  // 가을: 9~11
-  { name:"autumn", x0:  9, x1: 11.999, label:"가을" },
+  { name:"winter", label:"겨울",  color:"#4682B4", months:[12,1,2] },
+  { name:"spring", label:"봄",    color:"#FFB7C5", months:[3,4,5] },
+  { name:"summer", label:"여름",  color:"#00CED1", months:[6,7,8] },
+  { name:"autumn", label:"가을",  color:"#D2691E", months:[9,10,11] },
 ];
 
 // 격자선 전용
@@ -113,26 +112,23 @@ const yAxisG = g.append("g")
 xAxisG.selectAll("text").style("font-size","12px").attr("dy","0.8em");
 yAxisG.selectAll("text").style("font-size","12px");
 
-// 계절 배경 그리기 (x밴드 경계 맞춤)
 const seasonG = g.append("g").attr("class","seasons");
 seasons.forEach(s => {
-  const xStart = x(Math.floor(s.x0)) ?? x(12);
-  const bw = x.bandwidth();
-  let xEnd;
-  if (Math.floor(s.x1) === Math.floor(s.x0)) {
-    xEnd = xStart + bw;
-  } else {
-    const months = d3.range(Math.floor(s.x0), Math.floor(s.x1)+1);
-    const start = x(months[0]);
-    const end   = x(months[months.length-1]) + bw;
-    xEnd = end;
-  }
-  seasonG.append("rect")
-    .attr("class", `season ${s.name}`)
-    .attr("x", xStart)
-    .attr("y", 0)
-    .attr("width", xEnd - xStart)
-    .attr("height", innerH);
+// 연속 구간의 시작과 끝을 도메인 순서대로 잡기
+const startX = x(s.months[0]); // ex) 겨울은 12월의 x
+const endX   = x(s.months[s.months.length - 1]) + x.bandwidth(); // 마지막 달 막대 끝
+
+// 방어: 도메인에 없는 달이 있을 때는 건너뜀
+if (startX == null || (endX - startX) <= 0) return;
+
+seasonG.append("rect")
+  .attr("class", `season ${s.name}`)
+  .attr("x", startX)
+  .attr("y", 0)
+  .attr("width", endX - startX)
+  .attr("height", innerH)
+  .attr("fill", s.color)
+  .attr("opacity", 0.32);
 });
 
 // ✅ 계절 범례(legend) 추가
@@ -215,7 +211,7 @@ function resetBars() {
 function drawBars(seq=true) {
   if (hasDrawn) return;
 
-  const bar = barsG.selectAll("rect.bar").data(data, d => d.month);
+  const bar = barsG.selectAll("rect.bar").data(orderedData, d => d.month);
   const enter = bar.enter().append("rect")
       .attr("class","bar")
       .attr("x", d => x(d.month))
@@ -244,21 +240,25 @@ function drawBars(seq=true) {
 
   bar.exit().remove();
 
-  const lbl = labelsG.selectAll("text.value").data(data, d => d.month);
+  const lbl = labelsG.selectAll("text.value").data(orderedData, d => d.month);
   const lblEnter = lbl.enter().append("text")
-      .attr("class","value")
-      .attr("x", d => x(d.month) + x.bandwidth()/2)
-      .attr("y", innerH - 6)
-      .attr("text-anchor","middle")
-      .text("0");
+    .attr("class", "value")
+    .attr("x", d => x(d.month) + x.bandwidth() / 2)
+    .attr("y", innerH - 6)  // 아래에서 시작
+    .attr("text-anchor", "middle")
+    .text("0");
 
-  (seq ? lblEnter.transition().delay((_,i)=> i*100) : lblEnter.transition())
-      .duration(dur).ease(ease)
-      .attr("y", d => y(d.count) - 6)
-      .on("start", function(_,i){
-        const d = data[i];
-        tweenCount(d3.select(this), 0, d.count, dur);
-      });
+  (seq ? lblEnter.transition().delay((_, i) => i * 120) : lblEnter.transition())
+    .duration(dur).ease(ease)
+    .tween("text", function(d) {
+      const i = d3.interpolateNumber(0, d.count);
+      const yStart = innerH - 6;
+      const yEnd = y(d.count) - 6;
+      return function(t) {
+        this.textContent = d3.format(",d")(Math.round(i(t)));
+        this.setAttribute("y", yStart + (yEnd - yStart) * t);  // y도 함께 보간
+      };
+    });
 
   lbl.transition().duration(800)
      .attr("x", d => x(d.month) + x.bandwidth()/2)
