@@ -438,7 +438,7 @@ with center:
 
     
     data_json = json.dumps(chart_data.to_dict(orient='records'), ensure_ascii=False)
-    HTML_PATH = Path('../components/yearly_active_bars.html')
+    HTML_PATH = Path('../components/전국_연도별_발생수.html')
     html_src = HTML_PATH.read_text(encoding="utf-8")
     html_filled = html_src.replace("__DATA_JSON__", data_json)
 
@@ -535,7 +535,7 @@ with center:
     chart_data.columns = ['year', 'count']
 
     data_json = json.dumps(chart_data.to_dict(orient='records'), ensure_ascii=False)
-    HTML_PATH = Path('../components/yearly_active_bars.html')
+    HTML_PATH = Path('../components/전국_연도별_발생수.html')
     html_src = HTML_PATH.read_text(encoding="utf-8")
     html_filled = html_src.replace("__DATA_JSON__", data_json)
 
