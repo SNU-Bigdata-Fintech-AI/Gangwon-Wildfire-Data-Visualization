@@ -760,8 +760,6 @@ with center:
         - **대응**: 소방청, 산림청, 군부대 등 총력 대응, 헬기 30대 투입, 인력 1,500명 이상 동원
         """)
 
-
-    
 # 페이지 Road
 time.sleep(1)  # 렌더링 안정성 위해 약간의 지연
 if overlay is not None:
