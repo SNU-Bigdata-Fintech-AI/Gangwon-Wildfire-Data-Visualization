@@ -24,7 +24,6 @@ __pycache__/
 *.jpeg
 *.gif
 *.svg
-*.pdf
 
 # Environment files
 .env
